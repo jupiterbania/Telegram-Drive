@@ -1,0 +1,20 @@
+{
+  "$schema": "./node_modules/wrangler/config-schema.json",
+  "name": "telegram-drive-cloud-share",
+  "main": "src/index.ts",
+  "compatibility_date": "2026-08-10",
+  "workers_dev": true,
+  "d1_databases": [
+    {
+      "binding": "DB",
+      "database_name": "telegram-drive-cloud-shares",
+      "database_id": "23a1e809-58f3-4bdb-ac7b-755d5782f237",
+      "migrations_dir": "migrations"
+    }
+  ],
+  "vars": {
+    "APP_NAME": "Telegram Drive Cloud Share",
+    "MAX_ATTEMPTS": "5",
+    "LOCKOUT_SECONDS": "30"
+  }
+}

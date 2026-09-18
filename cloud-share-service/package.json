@@ -1,0 +1,23 @@
+{
+  "name": "telegram-drive-cloud-share-service",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "check": "tsc --noEmit",
+    "test": "vitest run",
+    "dev": "wrangler dev",
+    "deploy": "wrangler deploy",
+    "db:migrate:local": "wrangler d1 migrations apply telegram-drive-cloud-shares --local",
+    "db:migrate:remote": "wrangler d1 migrations apply telegram-drive-cloud-shares --remote"
+  },
+  "dependencies": {
+    "hono": "^4.7.1"
+  },
+  "devDependencies": {
+    "@cloudflare/workers-types": "^4.20250224.0",
+    "typescript": "~5.8.2",
+    "vitest": "^3.0.7",
+    "wrangler": "^3.111.0"
+  }
+}
