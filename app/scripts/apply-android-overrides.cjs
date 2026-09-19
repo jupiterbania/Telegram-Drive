@@ -15,6 +15,7 @@ if (!fs.existsSync(source)) {
 }
 
 for (const entry of fs.readdirSync(source)) {
+  if (entry === '.gradle' || entry === '.idea' || entry.endsWith('.tmp')) continue;
   fs.cpSync(path.join(source, entry), path.join(destination, entry), {
     recursive: true,
     force: true,

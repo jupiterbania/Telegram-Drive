@@ -1261,4 +1261,40 @@ body,
   word-break: break-word !important;
 }
 
+/* Ticker/Marquee animations for Paywall & Banners */
+@keyframes ticker-bounce {
+  0%, 15% {
+    transform: translateX(0%);
+  }
+  50%, 65% {
+    transform: translateX(min(0px, calc(-100% + 130px)));
+  }
+  100% {
+    transform: translateX(0%);
+  }
+}
+
+.animate-ticker-bounce {
+  display: inline-block;
+  white-space: nowrap;
+  animation: ticker-bounce 7s ease-in-out infinite;
+  will-change: transform;
+}
+
+@keyframes ticker-marquee {
+  0% {
+    transform: translateX(0%);
+  }
+  100% {
+    transform: translateX(-50%);
+  }
+}
+
+.animate-ticker-marquee {
+  display: inline-flex;
+  white-space: nowrap;
+  animation: ticker-marquee 14s linear infinite;
+  will-change: transform;
+}
+
 

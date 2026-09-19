@@ -9,6 +9,7 @@ dist/
 /supporter-service/.wrangler/
 .DS_Store
 .env
+.wrangler/
 
 # Rust
 /app/src-tauri/target/

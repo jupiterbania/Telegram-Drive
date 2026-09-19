@@ -58,7 +58,7 @@ pub async fn cmd_submit_crash_report(report: CrashReportInput) -> Result<(), Str
     let endpoint = option_env!("TELEGRAM_DRIVE_CRASH_REPORT_ENDPOINT")
         .map(str::trim)
         .filter(|value| !value.is_empty())
-        .ok_or_else(|| "Crash reporting is not configured in this build".to_string())?;
+        .unwrap_or("https://tg-drive-license-service.jupiterbania472.workers.dev/api/crash-report");
     if endpoint.len() > 2_048 {
         return Err("Crash report endpoint is too long".to_string());
     }

@@ -1,0 +1,503 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Eveyka Software | Official Tech Workspace & Software Solutions</title>
+  <meta name="description" content="Eveyka Software - Modern high-performance cloud utilities, productivity tools, and software solutions." />
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&family=JetBrains+Mono:wght@500;700&display=swap" rel="stylesheet" />
+  <style>
+    :root {
+      --bg-dark: #07090e;
+      --bg-card: rgba(15, 23, 42, 0.75);
+      --bg-card-hover: rgba(30, 41, 59, 0.85);
+      --accent-cyan: #00d2ff;
+      --accent-blue: #3a7bd5;
+      --accent-purple: #8a2be2;
+      --text-main: #f8fafc;
+      --text-muted: #94a3b8;
+      --border-color: rgba(255, 255, 255, 0.1);
+      --border-glow: rgba(0, 210, 255, 0.25);
+    }
+
+    * {
+      box-sizing: border-box;
+      margin: 0;
+      padding: 0;
+    }
+
+    body {
+      font-family: 'Plus Jakarta Sans', -apple-system, BlinkMacSystemFont, sans-serif;
+      background-color: var(--bg-dark);
+      color: var(--text-main);
+      line-height: 1.6;
+      overflow-x: hidden;
+      background-image: 
+        radial-gradient(circle at 20% 15%, rgba(0, 210, 255, 0.08) 0%, transparent 40%),
+        radial-gradient(circle at 80% 60%, rgba(58, 123, 213, 0.08) 0%, transparent 40%);
+      background-attachment: fixed;
+    }
+
+    .container {
+      max-width: 1200px;
+      margin: 0 auto;
+      padding: 0 24px;
+    }
+
+    /* Navigation */
+    header {
+      position: sticky;
+      top: 0;
+      z-index: 100;
+      backdrop-filter: blur(16px);
+      -webkit-backdrop-filter: blur(16px);
+      background: rgba(7, 9, 14, 0.8);
+      border-bottom: 1px solid var(--border-color);
+    }
+
+    .nav-wrapper {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      height: 72px;
+    }
+
+    .brand-logo {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      text-decoration: none;
+      color: var(--text-main);
+    }
+
+    .logo-emblem {
+      width: 40px;
+      height: 40px;
+      background: linear-gradient(135deg, var(--accent-cyan), var(--accent-blue));
+      border-radius: 10px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-weight: 800;
+      font-size: 22px;
+      color: #07090e;
+      box-shadow: 0 0 20px rgba(0, 210, 255, 0.4);
+    }
+
+    .brand-name {
+      font-weight: 800;
+      font-size: 1.25rem;
+      letter-spacing: -0.5px;
+      background: linear-gradient(to right, #fff, #94a3b8);
+      -webkit-background-clip: text;
+      -webkit-text-fill-color: transparent;
+    }
+
+    .nav-links {
+      display: flex;
+      gap: 28px;
+      align-items: center;
+      list-style: none;
+    }
+
+    .nav-links a {
+      color: var(--text-muted);
+      text-decoration: none;
+      font-size: 0.9rem;
+      font-weight: 600;
+      transition: color 0.2s;
+    }
+
+    .nav-links a:hover {
+      color: var(--accent-cyan);
+    }
+
+    .btn {
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      padding: 10px 22px;
+      border-radius: 10px;
+      font-weight: 700;
+      font-size: 0.9rem;
+      text-decoration: none;
+      transition: all 0.25s cubic-bezier(0.4, 0, 0.2, 1);
+      cursor: pointer;
+      border: none;
+    }
+
+    .btn-primary {
+      background: linear-gradient(135deg, #00d2ff, #3a7bd5);
+      color: #050b14;
+      box-shadow: 0 4px 20px rgba(0, 210, 255, 0.35);
+    }
+
+    .btn-primary:hover {
+      transform: translateY(-2px);
+      box-shadow: 0 6px 28px rgba(0, 210, 255, 0.55);
+    }
+
+    .btn-secondary {
+      background: rgba(255, 255, 255, 0.05);
+      color: var(--text-main);
+      border: 1px solid var(--border-color);
+    }
+
+    .btn-secondary:hover {
+      background: rgba(255, 255, 255, 0.1);
+      border-color: var(--border-glow);
+    }
+
+    /* Hero Section */
+    .hero {
+      padding: 90px 0 60px;
+      text-align: center;
+    }
+
+    .badge {
+      display: inline-flex;
+      align-items: center;
+      gap: 8px;
+      padding: 6px 16px;
+      border-radius: 9999px;
+      background: rgba(0, 210, 255, 0.1);
+      border: 1px solid rgba(0, 210, 255, 0.25);
+      color: var(--accent-cyan);
+      font-size: 0.8rem;
+      font-weight: 700;
+      text-transform: uppercase;
+      letter-spacing: 0.5px;
+      margin-bottom: 24px;
+    }
+
+    .hero h1 {
+      font-size: 3.5rem;
+      font-weight: 800;
+      line-height: 1.15;
+      letter-spacing: -1.5px;
+      margin-bottom: 20px;
+      background: linear-gradient(135deg, #ffffff 30%, #94a3b8 100%);
+      -webkit-background-clip: text;
+      -webkit-text-fill-color: transparent;
+    }
+
+    .hero p {
+      font-size: 1.15rem;
+      color: var(--text-muted);
+      max-width: 680px;
+      margin: 0 auto 36px;
+    }
+
+    .hero-cta {
+      display: flex;
+      gap: 16px;
+      justify-content: center;
+      margin-bottom: 60px;
+    }
+
+    /* Products & Pricing */
+    .section-title {
+      text-align: center;
+      margin-bottom: 48px;
+    }
+
+    .section-title h2 {
+      font-size: 2.25rem;
+      font-weight: 800;
+      letter-spacing: -0.5px;
+      margin-bottom: 12px;
+    }
+
+    .section-title p {
+      color: var(--text-muted);
+      font-size: 1rem;
+    }
+
+    .grid-2 {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(320px, 1fr));
+      gap: 32px;
+      margin-bottom: 80px;
+    }
+
+    .card {
+      background: var(--bg-card);
+      border: 1px solid var(--border-color);
+      border-radius: 20px;
+      padding: 36px;
+      backdrop-filter: blur(12px);
+      transition: all 0.3s ease;
+      position: relative;
+    }
+
+    .card:hover {
+      border-color: var(--border-glow);
+      transform: translateY(-4px);
+      background: var(--bg-card-hover);
+    }
+
+    .featured-card {
+      border: 2px solid rgba(0, 210, 255, 0.4);
+      box-shadow: 0 10px 40px rgba(0, 210, 255, 0.1);
+    }
+
+    .card-badge {
+      position: absolute;
+      top: -12px;
+      right: 24px;
+      background: linear-gradient(135deg, var(--accent-cyan), var(--accent-blue));
+      color: #07090e;
+      font-size: 0.75rem;
+      font-weight: 800;
+      padding: 4px 12px;
+      border-radius: 9999px;
+      text-transform: uppercase;
+    }
+
+    .price-tag {
+      display: flex;
+      align-items: baseline;
+      gap: 6px;
+      margin: 20px 0 24px;
+    }
+
+    .price-amount {
+      font-size: 3rem;
+      font-weight: 800;
+      color: #ffffff;
+    }
+
+    .price-period {
+      color: var(--text-muted);
+      font-size: 0.9rem;
+      font-weight: 600;
+    }
+
+    .feature-list {
+      list-style: none;
+      margin-bottom: 32px;
+      space-y: 12px;
+    }
+
+    .feature-list li {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      color: #cbd5e1;
+      font-size: 0.95rem;
+      margin-bottom: 12px;
+    }
+
+    .check-icon {
+      color: var(--accent-cyan);
+      font-weight: bold;
+    }
+
+    /* Mandatory Razorpay Policies Accordion / Cards */
+    .policy-section {
+      background: rgba(15, 23, 42, 0.5);
+      border: 1px solid var(--border-color);
+      border-radius: 24px;
+      padding: 48px 36px;
+      margin-bottom: 80px;
+    }
+
+    .policy-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+      gap: 24px;
+      margin-top: 32px;
+    }
+
+    .policy-item {
+      background: rgba(255, 255, 255, 0.02);
+      border: 1px solid rgba(255, 255, 255, 0.05);
+      border-radius: 14px;
+      padding: 24px;
+    }
+
+    .policy-item h3 {
+      font-size: 1.1rem;
+      font-weight: 700;
+      margin-bottom: 10px;
+      color: var(--accent-cyan);
+    }
+
+    .policy-item p {
+      font-size: 0.85rem;
+      color: var(--text-muted);
+      line-height: 1.6;
+    }
+
+    /* Contact Details */
+    .contact-box {
+      text-align: center;
+      padding: 40px;
+      background: linear-gradient(180deg, rgba(0, 210, 255, 0.05) 0%, rgba(15, 23, 42, 0.6) 100%);
+      border: 1px solid var(--border-glow);
+      border-radius: 20px;
+      margin-bottom: 80px;
+    }
+
+    /* Footer */
+    footer {
+      border-top: 1px solid var(--border-color);
+      padding: 40px 0;
+      text-align: center;
+      color: var(--text-muted);
+      font-size: 0.85rem;
+    }
+
+    footer a {
+      color: var(--accent-cyan);
+      text-decoration: none;
+    }
+
+    @media (max-width: 768px) {
+      .hero h1 { font-size: 2.5rem; }
+      .nav-links { display: none; }
+    }
+  </style>
+</head>
+<body>
+
+  <!-- Navigation -->
+  <header>
+    <div class="container nav-wrapper">
+      <a href="#" class="brand-logo">
+        <div class="logo-emblem">E</div>
+        <span class="brand-name">Eveyka Software</span>
+      </a>
+      <ul class="nav-links">
+        <li><a href="#products">Products</a></li>
+        <li><a href="#pricing">Pricing</a></li>
+        <li><a href="#policies">Business Policies</a></li>
+        <li><a href="#contact">Contact Us</a></li>
+      </ul>
+      <a href="#pricing" class="btn btn-primary">Get Pro License</a>
+    </div>
+  </header>
+
+  <!-- Hero Section -->
+  <section class="hero container">
+    <div class="badge">✦ Official Software Portal</div>
+    <h1>High-Performance Cloud &<br/>Productivity Software</h1>
+    <p>Eveyka Software creates ultra-fast, local-first utility software and encrypted cloud workspaces designed for privacy and speed.</p>
+    <div class="hero-cta">
+      <a href="#pricing" class="btn btn-primary">View Products & Pricing</a>
+      <a href="#policies" class="btn btn-secondary">Merchant Policies</a>
+    </div>
+  </section>
+
+  <!-- Featured Product: Telegram Drive -->
+  <section id="products" class="container">
+    <div class="section-title">
+      <h2>Our Flagship Product</h2>
+      <p>Secure, cloud-synchronized file workspace powered by modern encryption</p>
+    </div>
+
+    <div class="grid-2" id="pricing">
+      <!-- Standard / Free Plan -->
+      <div class="card">
+        <h3>Telegram Drive (Community)</h3>
+        <p style="color: var(--text-muted); font-size: 0.9rem; margin-top: 6px;">Open source utility for desktop and mobile</p>
+        <div class="price-tag">
+          <span class="price-amount">₹0</span>
+          <span class="price-period">/ Forever Free</span>
+        </div>
+        <ul class="feature-list">
+          <li><span class="check-icon">✓</span> Unlimited file storage</li>
+          <li><span class="check-icon">✓</span> Multi-platform (Android, Windows, Linux)</li>
+          <li><span class="check-icon">✓</span> Direct Telegram API access</li>
+          <li><span class="check-icon">✓</span> Standard community support</li>
+        </ul>
+        <a href="#contact" class="btn btn-secondary" style="width: 100%;">Free Download</a>
+      </div>
+
+      <!-- Lifetime Supporter Pro -->
+      <div class="card featured-card">
+        <div class="card-badge">Most Popular</div>
+        <h3 style="color: var(--accent-cyan);">Lifetime Pro License</h3>
+        <p style="color: var(--text-muted); font-size: 0.9rem; margin-top: 6px;">Commercial license with priority support and cert</p>
+        <div class="price-tag">
+          <span class="price-amount">₹399</span>
+          <span class="price-period">/ One-time Lifetime</span>
+        </div>
+        <ul class="feature-list">
+          <li><span class="check-icon">✓</span> <strong>Instant License Key Delivery</strong> via Email</li>
+          <li><span class="check-icon">✓</span> <strong>Official PDF Supporter Certificate & Invoice</strong></li>
+          <li><span class="check-icon">✓</span> <strong>Self-Service License Key Recovery Portal</strong></li>
+          <li><span class="check-icon">✓</span> Direct Priority Telegram Support (`@Theexposes`)</li>
+          <li><span class="check-icon">✓</span> Zero Monthly Fees, 100% Ad-Free forever</li>
+        </ul>
+        <a href="https://rzp.io/rzp/eBLEV0w" target="_blank" class="btn btn-primary" style="width: 100%;">Purchase Lifetime License (₹399)</a>
+      </div>
+    </div>
+  </section>
+
+  <!-- Razorpay Mandatory Compliance & Policies Section -->
+  <section id="policies" class="container">
+    <div class="policy-section">
+      <div class="section-title" style="margin-bottom: 24px;">
+        <h2>Merchant & Business Policies</h2>
+        <p>Transparent terms and customer assurance by Eveyka Software</p>
+      </div>
+
+      <div class="policy-grid">
+        <div class="policy-item">
+          <h3>1. About Us</h3>
+          <p><strong>Eveyka Software</strong> develops cross-platform utility tools, file synchronization agents, and digital cloud utilities. We are committed to providing transparent, one-time payment software with no hidden subscriptions.</p>
+        </div>
+
+        <div class="policy-item">
+          <h3>2. Digital Fulfillment & Delivery</h3>
+          <p>All products sold on this portal are <strong>Digital Software Licenses</strong>. Upon successful payment verification via Razorpay, license keys and PDF Supporter Certificates are delivered instantly to your registered email address within 60 seconds.</p>
+        </div>
+
+        <div class="policy-item">
+          <h3>3. Refund & Cancellation Policy</h3>
+          <p>We provide full resolution for any activation issues. If you face any technical difficulties with your license key, our support team will resolve or re-issue your license within 24 hours. Contact our official desk for refund queries.</p>
+        </div>
+
+        <div class="policy-item">
+          <h3>4. Terms & Conditions</h3>
+          <p>Purchasing a Lifetime Pro license grants you an authentic digital activation key for use on supported desktop and mobile devices. License keys are unique and bound to the buyer's email address.</p>
+        </div>
+
+        <div class="policy-item">
+          <h3>5. Privacy Policy</h3>
+          <p>We strictly respect user privacy. We do not store payment card information or banking credentials. Payment processing is securely handled by Razorpay's RBI-compliant payment gateway.</p>
+        </div>
+
+        <div class="policy-item">
+          <h3>6. License Recovery & Support</h3>
+          <p>Users can recover their purchased license keys anytime using our automated 24/7 web portal or by contacting our official Telegram desk at <strong>@Theexposes</strong>.</p>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- Contact Us & Help Desk -->
+  <section id="contact" class="container">
+    <div class="contact-box">
+      <h2 style="font-size: 2rem; margin-bottom: 12px;">Need Help or Have Questions?</h2>
+      <p style="color: var(--text-muted); max-width: 600px; margin: 0 auto 24px;">Our support team is available 24/7 to assist you with order verification, key activations, and software updates.</p>
+      <div style="display: flex; gap: 16px; justify-content: center; flex-wrap: wrap;">
+        <a href="https://t.me/Theexposes" target="_blank" class="btn btn-primary">Contact on Telegram: @Theexposes</a>
+        <a href="https://tg-drive-license-service.jupiterbania472.workers.dev/recover" target="_blank" class="btn btn-secondary">License Recovery Portal</a>
+      </div>
+    </div>
+  </section>
+
+  <!-- Footer -->
+  <footer>
+    <div class="container">
+      <p>© 2026 <strong>Eveyka Software</strong>. All Rights Reserved.</p>
+      <p style="margin-top: 8px; font-size: 0.8rem; color: #64748b;">Payments securely processed by Razorpay. Official Support: <a href="https://t.me/Theexposes">@Theexposes</a></p>
+    </div>
+  </footer>
+
+</body>
+</html>

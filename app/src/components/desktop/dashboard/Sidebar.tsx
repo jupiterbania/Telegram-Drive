@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { HardDrive, Folder, Plus, RefreshCw, LogOut, ChevronLeft, ChevronRight, Settings2, Trash2, Check, X, Eye, EyeOff, Clock3, Star, Pin, FileWarning, CalendarClock, Copy, Database } from 'lucide-react';
+import { HardDrive, Folder, Plus, RefreshCw, LogOut, ChevronLeft, ChevronRight, Settings2, Trash2, Check, X, Eye, EyeOff, Clock3, Star, Pin, FileWarning, CalendarClock, Copy, Database, Gift } from 'lucide-react';
 import { useTranslation } from 'react-i18next';
 import { SidebarItem } from './SidebarItem';
 import { BandwidthWidget } from './BandwidthWidget';
@@ -436,6 +436,39 @@ export function Sidebar({
             )}
 
             <div className={`flex flex-col border-t border-app-border-subtle p-2 ${settings.sidebarCollapsed ? 'items-center gap-2' : 'gap-2'}`}>
+                {/* Refer & Earn Commission Action */}
+                {settings.sidebarCollapsed ? (
+                    <button
+                        onClick={() => window.dispatchEvent(new CustomEvent('open-referral-modal'))}
+                        className="quiet-control p-2 text-amber-400 hover:bg-amber-500/15 rounded-lg border border-amber-500/30 transition-all group"
+                        title="Refer & Earn Real Cash (₹50/sale)"
+                    >
+                        <Gift className="w-4 h-4 text-amber-400 group-hover:scale-110 transition-transform" />
+                    </button>
+                ) : (
+                    <button
+                        onClick={() => window.dispatchEvent(new CustomEvent('open-referral-modal'))}
+                        className="flex items-center justify-between p-2 rounded-lg bg-gradient-to-r from-amber-500/10 via-amber-500/5 to-transparent border border-amber-500/25 hover:border-amber-500/40 text-left transition-all group cursor-pointer"
+                    >
+                        <div className="flex items-center gap-2 min-w-0">
+                            <div className="w-6 h-6 rounded-md bg-amber-500/20 text-amber-400 flex items-center justify-center shrink-0 group-hover:scale-105 transition-transform">
+                                <Gift className="w-3.5 h-3.5" />
+                            </div>
+                            <div className="min-w-0">
+                                <p className="text-xs font-semibold text-app-text group-hover:text-amber-400 truncate transition-colors">
+                                    Refer & Earn Cash
+                                </p>
+                                <p className="text-[10px] text-app-text-secondary truncate">
+                                    Earn ₹50 per friend
+                                </p>
+                            </div>
+                        </div>
+                        <span className="px-1.5 py-0.5 rounded text-[9px] font-bold bg-emerald-500/15 text-emerald-400 border border-emerald-500/25 shrink-0">
+                            ₹50
+                        </span>
+                    </button>
+                )}
+
                 <SyncStatusBadge collapsed={settings.sidebarCollapsed} />
                 {settings.sidebarCollapsed ? (
                     <>

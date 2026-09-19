@@ -1,5 +1,5 @@
 import { lazy, useState, useCallback, useMemo, useEffect, useRef } from 'react';
-import { Folder, Download, LogOut, RefreshCw, UploadCloud, MoreVertical, Trash2, Pencil, Globe, Shield, Lock, ChevronDown, ChevronLeft, ChevronRight, Share2, Link, X, Wifi, Activity, Zap, Eye, EyeOff, HelpCircle, Pause, Play, RotateCcw, Sliders, Film, Settings as SettingsIcon, FolderPlus, Bookmark, Search, Sparkles, LayoutGrid, List, HardDrive, KeyRound, ShieldCheck, ShieldAlert, Fingerprint, Clock, Cloud, Image as ImageIcon, FileText, FileCode, Layers, Sun, Moon, CheckSquare, Check, ArrowUpDown, ArrowUp, ArrowDown, CheckCircle2, AlertCircle, Music, WifiOff, User, Copy, Smartphone } from 'lucide-react';
+import { Folder, Download, LogOut, RefreshCw, UploadCloud, MoreVertical, Trash2, Pencil, Globe, Shield, Lock, ChevronDown, ChevronLeft, ChevronRight, Share2, Link, X, Wifi, Activity, Zap, Eye, EyeOff, HelpCircle, Pause, Play, RotateCcw, Sliders, Film, Settings as SettingsIcon, FolderPlus, Bookmark, Search, Sparkles, LayoutGrid, List, HardDrive, KeyRound, ShieldCheck, ShieldAlert, Fingerprint, Clock, Cloud, Image as ImageIcon, FileText, FileCode, Layers, Sun, Moon, CheckSquare, Check, ArrowUpDown, ArrowUp, ArrowDown, CheckCircle2, AlertCircle, Music, WifiOff, User, Copy, Smartphone, Gift } from 'lucide-react';
 import { invoke } from '@tauri-apps/api/core';
 import { onOpenUrl } from '@tauri-apps/plugin-deep-link';
 import { listen } from '@tauri-apps/api/event';
@@ -5040,6 +5040,37 @@ export default function MobileDashboard({ onLogout }: { onLogout?: () => void })
                       {isConnected ? 'MTProto Active' : 'Disconnected'}
                     </span>
                   </div>
+                </div>
+              </div>
+            </div>
+
+            {/* ── Refer & Earn Real Cash Section ── */}
+            <div className="space-y-2.5">
+              <div className="flex items-center gap-2 px-1">
+                <Gift className="w-3.5 h-3.5 text-amber-400" />
+                <span className="text-[11px] font-bold uppercase tracking-wider text-telegram-subtext">Affiliate & Partner</span>
+              </div>
+
+              <div 
+                onClick={() => window.dispatchEvent(new CustomEvent('open-referral-modal'))}
+                className="relative overflow-hidden rounded-2xl bg-gradient-to-br from-amber-500/15 via-orange-500/10 to-telegram-surface border border-amber-500/30 p-4 shadow-sm backdrop-blur-md cursor-pointer active:scale-[0.98] transition-all group"
+              >
+                <div className="flex items-center justify-between gap-3">
+                  <div className="flex items-center gap-3">
+                    <div className="w-11 h-11 rounded-xl bg-gradient-to-br from-amber-400 to-orange-500 flex items-center justify-center text-slate-950 font-black shadow-md shadow-amber-500/20 shrink-0 group-hover:scale-105 transition-transform">
+                      <Gift className="w-6 h-6" />
+                    </div>
+                    <div>
+                      <div className="flex items-center gap-2">
+                        <span className="text-sm font-bold text-telegram-text group-hover:text-amber-400 transition-colors">Refer & Earn Real Cash</span>
+                        <span className="px-2 py-0.5 rounded-full text-[9px] font-black bg-emerald-500/20 text-emerald-400 border border-emerald-500/30">₹50 / Sale</span>
+                      </div>
+                      <p className="text-[11px] text-telegram-subtext mt-0.5">
+                        Share your invite link, friends get 10% off, you earn cash with UPI/Bank payout!
+                      </p>
+                    </div>
+                  </div>
+                  <ChevronRight className="w-5 h-5 text-telegram-subtext group-hover:text-amber-400 group-hover:translate-x-0.5 transition-all shrink-0" />
                 </div>
               </div>
             </div>

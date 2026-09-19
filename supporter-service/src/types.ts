@@ -1,93 +1,119 @@
+export type LicensePlan = 'lifetime' | 'annual' | 'monthly' | 'trial';
+export type DevicePlatform = 'windows' | 'android' | 'ios' | 'macos' | 'linux' | 'web' | 'other';
+
+export interface LicenseRow {
+  id: string;
+  license_key: string;
+  customer_name: string | null;
+  customer_email: string | null;
+  plan_type: LicensePlan;
+  max_devices: number;
+  is_banned: number;
+  ban_reason: string | null;
+  notes: string | null;
+  created_at: number;
+  expires_at: number | null;
+}
+
+export interface DeviceActivationRow {
+  id: string;
+  license_key: string;
+  hardware_id: string;
+  device_name: string;
+  platform: DevicePlatform;
+  activated_at: number;
+  last_seen_at: number;
+  is_revoked: number;
+}
+
+export interface LicenseClaims {
+  sub: string; // license key
+  hwid: string; // hardware ID
+  plan: LicensePlan;
+  exp: number | null; // expiry timestamp or null for lifetime
+  iat: number;
+  iss: string;
+  name?: string;
+}
+
 export interface Env {
   DB: D1Database;
-  PAYPAL_ENVIRONMENT: 'sandbox' | 'live';
-  PAYPAL_CLIENT_ID: string;
-  PAYPAL_CLIENT_SECRET: string;
-  PAYPAL_MERCHANT_ID: string;
-  PAYPAL_WEBHOOK_ID: string;
-  PUBLIC_ORIGIN: string;
-  SUPPORTER_PRICE: string;
-  SUPPORTER_CURRENCY: string;
-  MAX_ACTIVE_DEVICES: string;
-  TERMS_VERSION: string;
-  ENTITLEMENT_TTL_DAYS: string;
-  OFFLINE_GRACE_DAYS: string;
-  ENTITLEMENT_SIGNING_JWK: string;
-  RECOVERY_LOOKUP_KEY: string;
-  RECOVERY_ENCRYPTION_KEY: string;
+  APP_NAME?: string;
+  STORE_URL?: string;
+  MAX_DEFAULT_DEVICES?: string;
+  ADMIN_SECRET?: string;
+  SIGNING_PRIVATE_KEY?: string; // Hex or base64 Ed25519 JWK / PEM / Raw
+  SIGNING_PUBLIC_KEY?: string;
+  LEMON_SQUEEZY_WEBHOOK_SECRET?: string;
+  LEMON_SQUEEZY_API_KEY?: string;
+  RESEND_API_KEY?: string;
+  EMAIL_FROM?: string;
+  GMAIL_USER?: string;
+  GMAIL_APP_PASSWORD?: string;
+  RAZORPAY_KEY_ID?: string;
+  RAZORPAY_KEY_SECRET?: string;
 }
 
-export interface CheckoutClaimRow {
+export interface RecoveryOtpRow {
   id: string;
-  claim_secret_hash: string;
-  paypal_order_id: string | null;
-  approval_url: string | null;
-  device_public_key: string;
-  device_key_hash: string;
-  status: 'creating' | 'pending' | 'processing' | 'completed' | 'cancelled' | 'expired' | 'failed';
-  terms_version: string;
-  terms_accepted_at: number;
-  created_at: number;
+  email: string;
+  otp_hash: string;
+  attempts: number;
   expires_at: number;
-  completed_at: number | null;
-  processing_started_at: number | null;
-  entitlement_id: string | null;
-  recovery_ciphertext: string | null;
-  recovery_nonce: string | null;
-  recovery_delivered_at: number | null;
-  error_code: string | null;
-}
-
-export interface EntitlementRow {
-  id: string;
-  paypal_order_id: string;
-  paypal_capture_id: string;
-  status: 'active' | 'revoked';
-  amount: string;
-  currency: string;
-  recovery_lookup_hash: string;
-  terms_version: string;
   created_at: number;
-  revoked_at: number | null;
-  revocation_reason: string | null;
 }
 
-export interface DeviceRow {
-  entitlement_id: string;
-  device_key_hash: string;
-  device_public_key: string;
-  activated_at: number;
-  last_refreshed_at: number;
-  revoked_at: number | null;
+export interface RequestOtpRequest {
+  email: string;
 }
 
-export interface EntitlementClaims {
-  iss: 'telegram-drive-supporter';
-  aud: 'telegram-drive-desktop';
-  entitlement_id: string;
-  device_key_hash: string;
-  terms_version: string;
-  issued_at: number;
-  expires_at: number;
-  offline_until: number;
+export interface VerifyOtpRequest {
+  email: string;
+  otp: string;
 }
 
-export interface PayPalCapture {
+export interface SelfResetDeviceRequest {
+  email: string;
+  session_token: string;
+  hardware_id: string;
+}
+
+export interface ActivationRequest {
+  license_key: string;
+  hardware_id: string;
+  device_name?: string;
+  platform?: DevicePlatform;
+}
+
+export interface VerifyRequest {
+  license_key: string;
+  hardware_id: string;
+  token?: string;
+}
+
+export interface DeactivateRequest {
+  license_key: string;
+  hardware_id: string;
+}
+
+export interface CreateLicenseRequest {
+  customer_name?: string;
+  customer_email?: string;
+  plan_type?: LicensePlan;
+  max_devices?: number;
+  notes?: string;
+  count?: number; // for bulk generation
+}
+
+export interface CrashReportRow {
   id: string;
-  status: string;
-  amount: { currency_code: string; value: string };
-  payee?: { merchant_id?: string };
-  supplementary_data?: { related_ids?: { order_id?: string } };
+  app_version: string;
+  source: string;
+  error_type: string;
+  frames: string;
+  platform: string;
+  occurred_at: string;
+  created_at: number;
 }
 
-export interface PayPalOrder {
-  id: string;
-  status: string;
-  purchase_units: Array<{
-    custom_id?: string;
-    amount?: { currency_code?: string; value?: string };
-    payee?: { merchant_id?: string };
-    payments?: { captures?: PayPalCapture[] };
-  }>;
-  links?: Array<{ href: string; rel: string; method: string }>;
-}
+

@@ -89,6 +89,12 @@ const classes = [
         r8: 'java.lang.String getCachedPath(java.lang.String)',
       },
       {
+        name: 'getGalleryAlbumsJson',
+        descriptor: '()Ljava/lang/String;',
+        kotlin: 'fun getGalleryAlbumsJson(): String',
+        r8: 'java.lang.String getGalleryAlbumsJson()',
+      },
+      {
         name: 'getInstalledVersionCode',
         descriptor: '()J',
         kotlin: 'fun getInstalledVersionCode(): Long',

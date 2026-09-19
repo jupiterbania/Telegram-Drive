@@ -1,5 +1,6 @@
 {
-  "name": "app",
+  "name": "tg-drive",
+  "description": "TG Drive: Unlimited Cloud - Fast & Secure Cloud Storage powered by Telegram",
   "private": true,
   "version": "1.0.54",
   "type": "module",

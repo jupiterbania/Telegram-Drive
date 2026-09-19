@@ -1,72 +1,44 @@
 PRAGMA foreign_keys = ON;
 
-CREATE TABLE checkout_claims (
+CREATE TABLE licenses (
     id TEXT PRIMARY KEY,
-    claim_secret_hash TEXT NOT NULL UNIQUE,
-    paypal_order_id TEXT UNIQUE,
-    approval_url TEXT,
-    device_public_key TEXT NOT NULL,
-    device_key_hash TEXT NOT NULL,
-    status TEXT NOT NULL CHECK (status IN ('creating', 'pending', 'processing', 'completed', 'cancelled', 'expired', 'failed')),
-    terms_version TEXT NOT NULL,
-    terms_accepted_at INTEGER NOT NULL,
+    license_key TEXT NOT NULL UNIQUE,
+    customer_name TEXT,
+    customer_email TEXT,
+    plan_type TEXT NOT NULL CHECK (plan_type IN ('lifetime', 'annual', 'monthly', 'trial')) DEFAULT 'lifetime',
+    max_devices INTEGER NOT NULL DEFAULT 2,
+    is_banned INTEGER NOT NULL DEFAULT 0 CHECK (is_banned IN (0, 1)),
+    ban_reason TEXT,
+    notes TEXT,
     created_at INTEGER NOT NULL,
-    expires_at INTEGER NOT NULL,
-    completed_at INTEGER,
-    processing_started_at INTEGER,
-    entitlement_id TEXT,
-    recovery_ciphertext TEXT,
-    recovery_nonce TEXT,
-    recovery_delivered_at INTEGER,
-    error_code TEXT
+    expires_at INTEGER
 );
 
-CREATE INDEX checkout_claims_device_status_idx
-    ON checkout_claims(device_key_hash, status, expires_at);
+CREATE INDEX licenses_key_idx ON licenses(license_key);
+CREATE INDEX licenses_email_idx ON licenses(customer_email);
+CREATE INDEX licenses_created_idx ON licenses(created_at DESC);
 
-CREATE TABLE entitlements (
+CREATE TABLE device_activations (
     id TEXT PRIMARY KEY,
-    paypal_order_id TEXT NOT NULL UNIQUE,
-    paypal_capture_id TEXT NOT NULL UNIQUE,
-    status TEXT NOT NULL CHECK (status IN ('active', 'revoked')),
-    amount TEXT NOT NULL,
-    currency TEXT NOT NULL,
-    recovery_lookup_hash TEXT NOT NULL UNIQUE,
-    terms_version TEXT NOT NULL,
-    created_at INTEGER NOT NULL,
-    revoked_at INTEGER,
-    revocation_reason TEXT
-);
-
-CREATE TABLE entitlement_devices (
-    entitlement_id TEXT NOT NULL REFERENCES entitlements(id) ON DELETE CASCADE,
-    device_key_hash TEXT NOT NULL,
-    device_public_key TEXT NOT NULL,
+    license_key TEXT NOT NULL REFERENCES licenses(license_key) ON DELETE CASCADE,
+    hardware_id TEXT NOT NULL,
+    device_name TEXT NOT NULL,
+    platform TEXT NOT NULL CHECK (platform IN ('windows', 'android', 'ios', 'macos', 'linux', 'web', 'other')),
     activated_at INTEGER NOT NULL,
-    last_refreshed_at INTEGER NOT NULL,
-    revoked_at INTEGER,
-    PRIMARY KEY (entitlement_id, device_key_hash)
+    last_seen_at INTEGER NOT NULL,
+    is_revoked INTEGER NOT NULL DEFAULT 0 CHECK (is_revoked IN (0, 1)),
+    UNIQUE (license_key, hardware_id)
 );
 
-CREATE INDEX entitlement_devices_active_idx
-    ON entitlement_devices(entitlement_id, revoked_at);
+CREATE INDEX device_activations_key_idx ON device_activations(license_key, is_revoked);
+CREATE INDEX device_activations_hw_idx ON device_activations(hardware_id);
 
-CREATE TABLE activation_challenges (
+CREATE TABLE admin_audit_logs (
     id TEXT PRIMARY KEY,
-    entitlement_id TEXT NOT NULL REFERENCES entitlements(id) ON DELETE CASCADE,
-    device_key_hash TEXT NOT NULL,
-    nonce_hash TEXT NOT NULL UNIQUE,
-    created_at INTEGER NOT NULL,
-    expires_at INTEGER NOT NULL,
-    consumed_at INTEGER
+    action TEXT NOT NULL,
+    target_key TEXT,
+    details TEXT,
+    created_at INTEGER NOT NULL
 );
 
-CREATE TABLE webhook_events (
-    id TEXT PRIMARY KEY,
-    event_type TEXT NOT NULL,
-    received_at INTEGER NOT NULL,
-    processed_at INTEGER,
-    result TEXT
-);
-
-CREATE INDEX webhook_events_received_idx ON webhook_events(received_at);
+CREATE INDEX admin_audit_created_idx ON admin_audit_logs(created_at DESC);

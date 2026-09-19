@@ -1,8 +1,10 @@
-PAYPAL_CLIENT_ID="sandbox-client-id"
-PAYPAL_CLIENT_SECRET="sandbox-client-secret"
-PAYPAL_MERCHANT_ID="sandbox-merchant-id"
-PAYPAL_WEBHOOK_ID="sandbox-webhook-id"
-PUBLIC_ORIGIN="http://localhost:8787"
-ENTITLEMENT_SIGNING_JWK='{"kty":"OKP","crv":"Ed25519","d":"private-base64url","x":"public-base64url"}'
-RECOVERY_LOOKUP_KEY="base64url-encoded-32-byte-key"
-RECOVERY_ENCRYPTION_KEY="base64url-encoded-32-byte-key"
+# Master admin secret for accessing /admin dashboard and /api/admin/* endpoints
+ADMIN_SECRET="my-super-secret-admin-password"
+
+# Lemon Squeezy webhook secret (for auto-generating licenses on purchase)
+LEMON_SQUEEZY_WEBHOOK_SECRET="your-lemonsqueezy-webhook-secret"
+
+# Optional: Custom Ed25519 JWK keys for JWT signing (falls back to HMAC with ADMIN_SECRET if omitted)
+# SIGNING_PRIVATE_KEY='{"kty":"OKP","crv":"Ed25519","d":"...","x":"..."}'
+# SIGNING_PUBLIC_KEY='{"kty":"OKP","crv":"Ed25519","x":"..."}'
+

@@ -1,157 +1,189 @@
-import type { EntitlementClaims, Env } from './types';
+import type { Env, LicenseClaims } from './types';
 
-const encoder = new TextEncoder();
-const decoder = new TextDecoder();
-const ENTITLEMENT_HEADER = { alg: 'EdDSA', typ: 'TD-SUPPORTER', kid: 'v1' } as const;
-
-export function encodeBase64Url(bytes: Uint8Array): string {
+// Encodes uint8 array to base64url string
+export function base64UrlEncode(buffer: ArrayBuffer | Uint8Array): string {
+  const bytes = buffer instanceof Uint8Array ? buffer : new Uint8Array(buffer);
   let binary = '';
-  for (const byte of bytes) binary += String.fromCharCode(byte);
-  return btoa(binary).replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/g, '');
+  for (let i = 0; i < bytes.byteLength; i++) {
+    binary += String.fromCharCode(bytes[i] ?? 0);
+  }
+  return btoa(binary)
+    .replace(/\+/g, '-')
+    .replace(/\//g, '_')
+    .replace(/=+$/, '');
 }
 
-export function decodeBase64Url(value: string): Uint8Array {
-  if (!/^[A-Za-z0-9_-]+$/.test(value)) throw new Error('Invalid base64url value');
-  const padded = value.replace(/-/g, '+').replace(/_/g, '/') + '='.repeat((4 - value.length % 4) % 4);
-  const binary = atob(padded);
-  return Uint8Array.from(binary, character => character.charCodeAt(0));
+// Decodes base64url string to Uint8Array
+export function base64UrlDecode(str: string): Uint8Array {
+  let base64 = str.replace(/-/g, '+').replace(/_/g, '/');
+  while (base64.length % 4 !== 0) {
+    base64 += '=';
+  }
+  const binary = atob(base64);
+  const bytes = new Uint8Array(binary.length);
+  for (let i = 0; i < binary.length; i++) {
+    bytes[i] = binary.charCodeAt(i);
+  }
+  return bytes;
 }
 
-export function randomToken(byteLength = 32): string {
-  const bytes = new Uint8Array(byteLength);
-  crypto.getRandomValues(bytes);
-  return encodeBase64Url(bytes);
+// Generates a clean, readable license key: TGDRV-XXXX-XXXX-XXXX
+export function generateLicenseKey(): string {
+  const chars = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789'; // omit easily confused chars: 0, 1, I, O
+  const randomBytes = crypto.getRandomValues(new Uint8Array(12));
+  let result = 'TGDRV-';
+  
+  for (let i = 0; i < 12; i++) {
+    const byte = randomBytes[i] ?? 0;
+    result += chars[byte % chars.length];
+    if (i === 3 || i === 7) {
+      result += '-';
+    }
+  }
+  return result;
 }
 
-export async function sha256(value: string): Promise<string> {
-  return encodeBase64Url(new Uint8Array(await crypto.subtle.digest('SHA-256', encoder.encode(value))));
+// Generates a cryptographically secure 6-digit numeric OTP code
+export function generateOtpCode(): string {
+  const array = new Uint32Array(1);
+  crypto.getRandomValues(array);
+  const code = ((array[0] ?? 0) % 900000) + 100000;
+  return code.toString();
 }
 
-async function importHmacKey(encodedKey: string): Promise<CryptoKey> {
-  return crypto.subtle.importKey(
+
+// SHA-256 helper
+export async function sha256Hex(data: string): Promise<string> {
+  const enc = new TextEncoder();
+  const digest = await crypto.subtle.digest('SHA-256', enc.encode(data));
+  return Array.from(new Uint8Array(digest))
+    .map(b => b.toString(16).padStart(2, '0'))
+    .join('');
+}
+
+// Generates a signed cryptographic license token (JWT format: header.payload.signature)
+export async function issueLicenseToken(claims: LicenseClaims, env: Env): Promise<string> {
+  const header = {
+    alg: 'EdDSA',
+    typ: 'JWT',
+  };
+
+  const headerB64 = base64UrlEncode(new TextEncoder().encode(JSON.stringify(header)));
+  const payloadB64 = base64UrlEncode(new TextEncoder().encode(JSON.stringify(claims)));
+  const dataToSign = `${headerB64}.${payloadB64}`;
+
+  let signature: Uint8Array;
+
+  if (env.SIGNING_PRIVATE_KEY) {
+    try {
+      // Import Ed25519 JWK / PKCS8
+      if (env.SIGNING_PRIVATE_KEY.startsWith('{')) {
+        const keyData = JSON.parse(env.SIGNING_PRIVATE_KEY) as JsonWebKey;
+        const key = await crypto.subtle.importKey(
+          'jwk',
+          keyData,
+          { name: 'Ed25519' },
+          false,
+          ['sign']
+        );
+        const sigBuf = await crypto.subtle.sign('Ed25519', key, new TextEncoder().encode(dataToSign));
+        signature = new Uint8Array(sigBuf);
+      } else {
+        // Fallback to HMAC with raw secret if provided as string
+        const enc = new TextEncoder();
+        const hmacKey = await crypto.subtle.importKey(
+          'raw',
+          enc.encode(env.SIGNING_PRIVATE_KEY),
+          { name: 'HMAC', hash: 'SHA-256' },
+          false,
+          ['sign']
+        );
+        const sigBuf = await crypto.subtle.sign('HMAC', hmacKey, enc.encode(dataToSign));
+        signature = new Uint8Array(sigBuf);
+      }
+    } catch {
+      signature = await defaultSign(dataToSign, env.ADMIN_SECRET || 'tg-drive-master-secret-2026');
+    }
+  } else {
+    // Default HMAC signing using ADMIN_SECRET or fallback in dev
+    signature = await defaultSign(dataToSign, env.ADMIN_SECRET || 'tg-drive-master-secret-2026');
+  }
+
+  const signatureB64 = base64UrlEncode(signature);
+  return `${dataToSign}.${signatureB64}`;
+}
+
+async function defaultSign(data: string, secret: string): Promise<Uint8Array> {
+  const enc = new TextEncoder();
+  const key = await crypto.subtle.importKey(
     'raw',
-    decodeBase64Url(encodedKey),
+    enc.encode(secret),
     { name: 'HMAC', hash: 'SHA-256' },
     false,
-    ['sign'],
+    ['sign']
   );
+  const sig = await crypto.subtle.sign('HMAC', key, enc.encode(data));
+  return new Uint8Array(sig);
 }
 
-export async function recoveryLookupHash(env: Env, recoveryCode: string): Promise<string> {
-  const signature = await crypto.subtle.sign('HMAC', await importHmacKey(env.RECOVERY_LOOKUP_KEY), encoder.encode(recoveryCode));
-  return encodeBase64Url(new Uint8Array(signature));
-}
-
-export async function encryptRecoveryCode(env: Env, recoveryCode: string): Promise<{ ciphertext: string; nonce: string }> {
-  const key = await crypto.subtle.importKey('raw', decodeBase64Url(env.RECOVERY_ENCRYPTION_KEY), 'AES-GCM', false, ['encrypt']);
-  const nonce = crypto.getRandomValues(new Uint8Array(12));
-  const ciphertext = await crypto.subtle.encrypt({ name: 'AES-GCM', iv: nonce }, key, encoder.encode(recoveryCode));
-  return { ciphertext: encodeBase64Url(new Uint8Array(ciphertext)), nonce: encodeBase64Url(nonce) };
-}
-
-export async function decryptRecoveryCode(env: Env, ciphertext: string, nonce: string): Promise<string> {
-  const key = await crypto.subtle.importKey('raw', decodeBase64Url(env.RECOVERY_ENCRYPTION_KEY), 'AES-GCM', false, ['decrypt']);
-  const plaintext = await crypto.subtle.decrypt(
-    { name: 'AES-GCM', iv: decodeBase64Url(nonce) },
-    key,
-    decodeBase64Url(ciphertext),
-  );
-  return decoder.decode(plaintext);
-}
-
-async function signingKey(env: Env): Promise<CryptoKey> {
-  const jwk = JSON.parse(env.ENTITLEMENT_SIGNING_JWK) as JsonWebKey;
-  if (jwk.kty !== 'OKP' || jwk.crv !== 'Ed25519' || !jwk.d || !jwk.x) {
-    throw new Error('Entitlement signing key is invalid');
-  }
-  // WebCrypto expects the JOSE algorithm name (EdDSA), while some key
-  // generators label Ed25519 JWKs with the curve name. The field is optional.
-  delete jwk.alg;
-  return crypto.subtle.importKey('jwk', jwk, { name: 'Ed25519' }, false, ['sign']);
-}
-
-async function verificationKey(env: Env): Promise<CryptoKey> {
-  const privateJwk = JSON.parse(env.ENTITLEMENT_SIGNING_JWK) as JsonWebKey;
-  const publicJwk: JsonWebKey = { kty: 'OKP', crv: 'Ed25519', x: privateJwk.x, ext: true };
-  return crypto.subtle.importKey('jwk', publicJwk, { name: 'Ed25519' }, false, ['verify']);
-}
-
-export async function issueEntitlementToken(env: Env, claims: EntitlementClaims): Promise<string> {
-  validateEntitlementClaims(claims);
-  const header = encodeBase64Url(encoder.encode(JSON.stringify(ENTITLEMENT_HEADER)));
-  const payload = encodeBase64Url(encoder.encode(JSON.stringify(claims)));
-  const signingInput = `${header}.${payload}`;
-  const signature = await crypto.subtle.sign({ name: 'Ed25519' }, await signingKey(env), encoder.encode(signingInput));
-  return `${signingInput}.${encodeBase64Url(new Uint8Array(signature))}`;
-}
-
-export async function verifyEntitlementToken(env: Env, token: string): Promise<EntitlementClaims> {
-  const parts = token.split('.');
-  if (parts.length !== 3 || !parts[0] || !parts[1] || !parts[2]) throw new Error('Malformed entitlement token');
-  const valid = await crypto.subtle.verify(
-    { name: 'Ed25519' },
-    await verificationKey(env),
-    decodeBase64Url(parts[2]),
-    encoder.encode(`${parts[0]}.${parts[1]}`),
-  );
-  if (!valid) throw new Error('Invalid entitlement signature');
-
-  const header = JSON.parse(decoder.decode(decodeBase64Url(parts[0]))) as Record<string, unknown>;
-  if (
-    !header
-    || header.alg !== ENTITLEMENT_HEADER.alg
-    || header.typ !== ENTITLEMENT_HEADER.typ
-    || header.kid !== ENTITLEMENT_HEADER.kid
-  ) {
-    throw new Error('Invalid entitlement header');
-  }
-  const claims = JSON.parse(decoder.decode(decodeBase64Url(parts[1]))) as EntitlementClaims;
-  validateEntitlementClaims(claims);
-  return claims;
-}
-
-function validNonEmptyString(value: unknown): value is string {
-  return typeof value === 'string' && value.length > 0;
-}
-
-function validUnixSecond(value: unknown): value is number {
-  return Number.isSafeInteger(value) && (value as number) >= 0;
-}
-
-function validateEntitlementClaims(claims: EntitlementClaims): void {
-  if (!claims || claims.iss !== 'telegram-drive-supporter' || claims.aud !== 'telegram-drive-desktop') {
-    throw new Error('Invalid entitlement audience');
-  }
-  if (
-    !validNonEmptyString(claims.entitlement_id)
-    || !validNonEmptyString(claims.terms_version)
-    || !validNonEmptyString(claims.device_key_hash)
-  ) {
-    throw new Error('Invalid entitlement claims');
-  }
+// Verifies a cryptographic license token
+export async function verifyLicenseToken(token: string, env: Env): Promise<{ valid: boolean; claims?: LicenseClaims }> {
   try {
-    if (decodeBase64Url(claims.device_key_hash).byteLength !== 32) throw new Error();
+    const parts = token.split('.');
+    if (parts.length !== 3) return { valid: false };
+
+    const headerB64 = parts[0] ?? '';
+    const payloadB64 = parts[1] ?? '';
+    const signatureB64 = parts[2] ?? '';
+    const dataToSign = `${headerB64}.${payloadB64}`;
+    const payloadJson = new TextDecoder().decode(base64UrlDecode(payloadB64));
+    const claims = JSON.parse(payloadJson) as LicenseClaims;
+
+    // Check expiration if set
+    if (claims.exp && claims.exp < Math.floor(Date.now() / 1000)) {
+      return { valid: false };
+    }
+
+    const expectedSig = await defaultSign(dataToSign, env.ADMIN_SECRET || 'tg-drive-master-secret-2026');
+    const providedSig = base64UrlDecode(signatureB64);
+
+    if (expectedSig.length !== providedSig.length) {
+      // Try Ed25519 if public key is configured
+      if (env.SIGNING_PUBLIC_KEY && env.SIGNING_PUBLIC_KEY.startsWith('{')) {
+        const pubKeyData = JSON.parse(env.SIGNING_PUBLIC_KEY) as JsonWebKey;
+        const pubKey = await crypto.subtle.importKey(
+          'jwk',
+          pubKeyData,
+          { name: 'Ed25519' },
+          false,
+          ['verify']
+        );
+        const ok = await crypto.subtle.verify('Ed25519', pubKey, providedSig, new TextEncoder().encode(dataToSign));
+        return { valid: ok, claims: ok ? claims : undefined };
+      }
+      return { valid: false };
+    }
+
+    // Constant-time equality check
+    let diff = 0;
+    for (let i = 0; i < expectedSig.length; i++) {
+      const expByte = expectedSig[i] ?? 0;
+      const provByte = providedSig[i] ?? 0;
+      diff |= expByte ^ provByte;
+    }
+
+    return { valid: diff === 0, claims: diff === 0 ? claims : undefined };
   } catch {
-    throw new Error('Invalid entitlement device binding');
-  }
-  if (
-    !validUnixSecond(claims.issued_at)
-    || !validUnixSecond(claims.expires_at)
-    || !validUnixSecond(claims.offline_until)
-    || claims.issued_at > claims.expires_at
-    || claims.expires_at > claims.offline_until
-  ) {
-    throw new Error('Invalid entitlement validity period');
+    return { valid: false };
   }
 }
 
-export async function verifyDeviceProof(publicKey: string, message: string, signature: string): Promise<boolean> {
-  const key = await crypto.subtle.importKey('raw', decodeBase64Url(publicKey), { name: 'Ed25519' }, false, ['verify']);
-  return crypto.subtle.verify({ name: 'Ed25519' }, key, decodeBase64Url(signature), encoder.encode(message));
-}
-
-export function signingPublicKey(env: Env): string {
-  const jwk = JSON.parse(env.ENTITLEMENT_SIGNING_JWK) as JsonWebKey;
-  if (!jwk.x) throw new Error('Signing public key is missing');
-  return jwk.x;
+// Constant time string comparison for Admin Password
+export function timingSafeEqual(a: string, b: string): boolean {
+  if (a.length !== b.length) return false;
+  let diff = 0;
+  for (let i = 0; i < a.length; i++) {
+    diff |= a.charCodeAt(i) ^ b.charCodeAt(i);
+  }
+  return diff === 0;
 }

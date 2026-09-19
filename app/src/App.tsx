@@ -40,6 +40,9 @@ import { consumeWhatsNew, type WhatsNewDetails } from "./services/updateReliabil
 import { useTvSpatialNavigation } from "./hooks/useTvSpatialNavigation";
 import { ensureLanguageResource } from "./i18n";
 import { useSupporter } from "./context/SupporterContext";
+import { PaywallGateModal } from "./components/shared/PaywallGateModal";
+import { ReferralModal } from "./components/shared/ReferralModal";
+import { licenseManager, type LicenseInfo } from "./services/licenseManager";
 
 type AuthStatus = "loading" | "authenticated" | "unauthenticated" | "sponsor-check";
 
@@ -51,8 +54,11 @@ interface StartupProgress {
 
 function AppContent() {
   const [authStatus, setAuthStatus] = useState<AuthStatus>("loading");
+  const [licenseInfo, setLicenseInfo] = useState<LicenseInfo | null>(null);
+  const [isCheckingLicense, setIsCheckingLicense] = useState(true);
+  const [isReferralModalOpen, setIsReferralModalOpen] = useState(false);
   const [startupProgress, setStartupProgress] = useState<StartupProgress>({
-    label: "Starting Telegram Drive",
+    label: "Starting TG Drive: Unlimited Cloud",
     detail: "Preparing local services…",
     percent: 8,
   });
@@ -103,6 +109,13 @@ function AppContent() {
     return () => mediaQuery.removeEventListener('change', handler);
   }, []);
 
+  // Global listener to open Refer & Earn modal from anywhere
+  useEffect(() => {
+    const handleOpenReferral = () => setIsReferralModalOpen(true);
+    window.addEventListener('open-referral-modal', handleOpenReferral);
+    return () => window.removeEventListener('open-referral-modal', handleOpenReferral);
+  }, []);
+
   // Apply performance-mode class to body (guarded by settings load to avoid flicker)
   useEffect(() => {
     if (!isLoaded) return;
@@ -117,6 +130,19 @@ function AppContent() {
     document.documentElement.classList.toggle('tv-mode', isTelevision);
     return () => document.documentElement.classList.remove('tv-mode');
   }, [isTelevision]);
+
+  // Load and verify commercial license
+  useEffect(() => {
+    licenseManager.loadLicense().then((info) => {
+      setLicenseInfo(info);
+      setIsCheckingLicense(false);
+      if (info.isLicensed) {
+        void licenseManager.verifyLicense().catch(() => undefined);
+      }
+    }).catch(() => {
+      setIsCheckingLicense(false);
+    });
+  }, []);
 
   // On mount: check for a saved session and auto-restore it.
   // This is the SINGLE source of truth for the initial connection.
@@ -268,6 +294,16 @@ function AppContent() {
       )}
       {whatsNew && <WhatsNewDialog details={whatsNew} onClose={() => setWhatsNew(null)} />}
       {isLoaded && <CrashReportingConsent />}
+      <PaywallGateModal
+        isOpen={!isCheckingLicense && (!licenseInfo || !licenseInfo.isLicensed)}
+        onActivated={(lic) => setLicenseInfo(lic)}
+      />
+      <ReferralModal
+        isOpen={isReferralModalOpen}
+        onClose={() => setIsReferralModalOpen(false)}
+        defaultEmail={localStorage.getItem('tg_drive_checkout_email') || undefined}
+        defaultName={licenseInfo?.customerName || localStorage.getItem('tg_drive_checkout_name') || undefined}
+      />
       {authStatus === "authenticated" && (
         <Suspense fallback={
           <div className="h-screen w-screen flex flex-col items-center justify-center bg-telegram-bg">

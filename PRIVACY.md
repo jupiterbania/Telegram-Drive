@@ -1,22 +1,44 @@
-# Telegram Drive Privacy Policy
+# Privacy Policy
 
-Telegram Drive is a local-first client application for desktop and mobile platforms. It does not operate intermediate file-storage or relay servers and does not collect or sell personal information.
+**Product**: TG Drive: Unlimited Cloud  
+**Publisher**: Eveyka Software (by Jupiter Bania)  
+**Effective Date**: September 18, 2026  
 
-## 1. Local-First Data Architecture
-- **Credentials & Authentication**: Your Telegram API hash, session tokens, and passwords are encrypted and stored locally in your operating system's native secure credential manager (Windows Credential Manager, macOS Keychain, Linux Secret Service, Android Keystore).
-- **Caches & Metadata**: File index caches, transfer queues, and local thumbnails remain stored strictly on your local device.
-- **Local Control**: You can clear all cached files, logs, and stored settings at any time directly through the Settings interface.
+TG Drive: Unlimited Cloud is built from the ground up as a **local-first, zero-knowledge** client application. We respect your privacy and believe your personal files, encryption keys, and credentials should belong solely to you.
 
-## 2. Direct Telegram Communication
-- Authentication and file operations connect directly between your device and Telegram's official MTProto servers.
-- Folders and files are stored within your private Telegram channels and Saved Messages according to Telegram's Terms of Service and Privacy Policy.
-- Telegram Drive does not proxy, intercept, or reroute your file transfers through third-party servers.
+---
 
-## 3. Local Sharing Services
-- Features such as the WebDAV server and local REST API are disabled by default. When enabled, they run locally on your machine and are secured using user-generated authorization tokens and credentials.
+### 1. Zero Middleman Data Storage
+* **No Cloud Account Server**: Eveyka Software does not operate any intermediate database or file-relay servers for your files.
+* **Direct MTProto Connection**: All authentication and file transfers happen directly and encrypted between your device and Telegram's official servers.
+* **We Never See Your Files**: We cannot see, store, analyze, or share any files or folders stored in your Telegram Drive.
 
-## 4. Optional Client-Side Encryption
-- When using client-side encryption (TDENC2), files are encrypted locally on your device before transfer. Encryption keys and passphrases are never transmitted to Telegram or any remote server.
+---
 
-## 5. Contact & Questions
-If you have questions or concerns regarding privacy, feel free to open a discussion or issue on the official [GitHub repository](https://github.com/jupiterbania/Telegram-Drive).
+### 2. Local-First Security & Credential Storage
+* **Native Encrypted Storage**: Your Telegram credentials, API tokens, and local cache metadata are encrypted and stored inside your operating system's native secure vault:
+  * **Windows**: Windows Credential Manager / Local AppData
+  * **macOS**: Apple Keychain
+  * **Linux**: FreeDesktop Secret Service
+  * **Android**: Android Keystore
+* **Local Control**: You can delete all local caches, indexes, and sessions anytime via the Settings page.
+
+---
+
+### 3. Optional Zero-Knowledge Vault Encryption (TDENC2)
+* When you enable Client-Side Encryption, files are encrypted with military-grade AES-256-GCM / ChaCha20-Poly1305 on your device *before* upload.
+* Passphrases and vault keys are never transmitted to Telegram, Eveyka Software, or any third party.
+
+---
+
+### 4. Commercial License Verification
+* To verify your active Commercial License, the Software periodically connects to our lightweight Cloudflare Edge licensing API.
+* **What is sent**: Your License Key and an anonymous cryptographic hardware fingerprint (Hardware ID).
+* **What is NEVER sent**: Your personal files, file names, Telegram messages, phone numbers, or contacts are never sent to the license server.
+
+---
+
+### 5. Contact & Privacy Inquiries
+If you have any questions regarding this Privacy Policy, you can reach out via:
+* **Telegram**: [@Theexposes](https://t.me/Theexposes)
+* **GitHub**: [https://github.com/jupiterbania/Telegram-Drive](https://github.com/jupiterbania/Telegram-Drive)

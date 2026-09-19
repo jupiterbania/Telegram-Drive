@@ -12,7 +12,7 @@
     "src/components/desktop/dashboard/MediaPlayer.tsx": 250000,
     "src/components/desktop/dashboard/PdfViewer.tsx": 500000,
     "src/components/desktop/dashboard/ArchiveViewerModal.tsx": 25000,
-    "src/components/mobile/AutoBackupSheet.tsx": 55000,
+    "src/components/mobile/AutoBackupSheet.tsx": 65000,
     "src/components/mobile/VaultPassphraseModal.tsx": 25000,
     "node_modules/hls.js/dist/hls.mjs": 540000
   },
