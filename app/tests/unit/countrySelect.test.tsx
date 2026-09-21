@@ -116,7 +116,8 @@ describe('AuthMethodStep country code selection', () => {
     expect(screen.getByLabelText('Phone Number')).toBeDefined();
 
     // Click on country selector to open modal
-    const countryButton = screen.getByRole('button', { name: /India/ });
+    const initialCountry = guessUserCountry();
+    const countryButton = screen.getByRole('button', { name: new RegExp(initialCountry.name) });
     fireEvent.click(countryButton);
 
     expect(screen.getByText('Select Country')).toBeDefined();

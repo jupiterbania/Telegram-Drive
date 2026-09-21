@@ -30,7 +30,7 @@ export function CrashReportingConsent() {
                 </div>
                 <h2 id="crash-consent-title" className="text-lg font-semibold text-app-text">Help improve crash reliability?</h2>
                 <p className="mt-2 text-sm leading-6 text-app-text-secondary">
-                    With your permission, Telegram Drive can send a small technical report only when the app crashes.
+                    With your permission, TG Drive can send a small technical report only when the app crashes.
                 </p>
                 <div className="mt-4 flex gap-3 rounded-lg border border-app-border-subtle bg-app-surface-sunken/30 p-3 text-xs leading-5 text-app-text-secondary">
                     <ShieldCheck className="mt-0.5 h-4 w-4 shrink-0 text-app-success" />

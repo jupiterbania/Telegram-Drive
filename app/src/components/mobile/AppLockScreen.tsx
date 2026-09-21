@@ -30,7 +30,7 @@ export function AppLockScreen({
     if (!biometricEnabled || !isAndroid) return;
     try {
       const authenticated = await invoke<boolean>('cmd_android_authenticate', {
-        reason: 'Authenticate to unlock Telegram Drive',
+        reason: 'Authenticate to unlock TG Drive',
       });
       if (authenticated) {
         if (isAndroid) {
@@ -125,7 +125,7 @@ export function AppLockScreen({
           <div className="w-24 h-24 rounded-3xl bg-telegram-surface/80 border border-telegram-border/60 flex items-center justify-center shadow-2xl relative">
             <img
               src="/inapp_logo.png"
-              alt="Telegram Drive"
+              alt="TG Drive"
               className="w-16 h-16 object-contain drop-shadow-xl bg-transparent"
             />
             <div className="absolute -bottom-2 -right-2 w-8 h-8 rounded-full bg-telegram-primary text-black flex items-center justify-center shadow-md border-2 border-telegram-bg">
@@ -137,7 +137,7 @@ export function AppLockScreen({
         {/* Title & Subtitle */}
         <div className="text-center mb-6">
           <h2 className="text-xl font-bold text-telegram-text tracking-tight">
-            Telegram Drive
+            TG Drive
           </h2>
           <p className="text-xs text-telegram-subtext mt-1 max-w-[240px]">
             {customPinEnabled && biometricEnabled

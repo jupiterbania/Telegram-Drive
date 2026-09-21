@@ -4,6 +4,8 @@ export type DevicePlatform = 'windows' | 'android' | 'ios' | 'macos' | 'linux' |
 export interface LicenseRow {
   id: string;
   license_key: string;
+  telegram_user_id?: string | null;
+  phone_number?: string | null;
   customer_name: string | null;
   customer_email: string | null;
   plan_type: LicensePlan;
@@ -27,8 +29,10 @@ export interface DeviceActivationRow {
 }
 
 export interface LicenseClaims {
-  sub: string; // license key
-  hwid: string; // hardware ID
+  sub: string; // license key or telegram user id
+  hwid?: string; // hardware ID (optional for account-bound mode)
+  tg_id?: string; // telegram user id
+  phone?: string; // phone number
   plan: LicensePlan;
   exp: number | null; // expiry timestamp or null for lifetime
   iat: number;
@@ -99,10 +103,28 @@ export interface DeactivateRequest {
 export interface CreateLicenseRequest {
   customer_name?: string;
   customer_email?: string;
+  telegram_user_id?: string;
+  phone_number?: string;
   plan_type?: LicensePlan;
   max_devices?: number;
   notes?: string;
   count?: number; // for bulk generation
+}
+
+export interface CheckAccountRequest {
+  telegram_user_id?: string;
+  phone_number?: string;
+}
+
+export interface AccountStatusResponse {
+  active: boolean;
+  license_key?: string | null;
+  plan_type?: LicensePlan;
+  customer_name?: string | null;
+  customer_email?: string | null;
+  expires_at?: number | null;
+  token?: string;
+  terms_version: string;
 }
 
 export interface CrashReportRow {

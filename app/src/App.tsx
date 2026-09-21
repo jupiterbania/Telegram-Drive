@@ -57,6 +57,7 @@ function AppContent() {
   const [licenseInfo, setLicenseInfo] = useState<LicenseInfo | null>(null);
   const [isCheckingLicense, setIsCheckingLicense] = useState(true);
   const [isReferralModalOpen, setIsReferralModalOpen] = useState(false);
+  const [referralInitialTab, setReferralInitialTab] = useState<'referral' | 'earnings'>('referral');
   const [startupProgress, setStartupProgress] = useState<StartupProgress>({
     label: "Starting TG Drive: Unlimited Cloud",
     detail: "Preparing local services…",
@@ -109,11 +110,26 @@ function AppContent() {
     return () => mediaQuery.removeEventListener('change', handler);
   }, []);
 
-  // Global listener to open Refer & Earn modal from anywhere
+  // Global listeners to open Refer & Earn or Earnings & Withdrawals screen from anywhere
   useEffect(() => {
-    const handleOpenReferral = () => setIsReferralModalOpen(true);
+    const handleOpenReferral = () => {
+      setReferralInitialTab('referral');
+      setIsReferralModalOpen(true);
+    };
+    const handleOpenWithdrawal = () => {
+      setReferralInitialTab('earnings');
+      setIsReferralModalOpen(true);
+    };
     window.addEventListener('open-referral-modal', handleOpenReferral);
-    return () => window.removeEventListener('open-referral-modal', handleOpenReferral);
+    window.addEventListener('open-referral-screen', handleOpenReferral);
+    window.addEventListener('open-withdrawal-screen', handleOpenWithdrawal);
+    window.addEventListener('open-earnings-modal', handleOpenWithdrawal);
+    return () => {
+      window.removeEventListener('open-referral-modal', handleOpenReferral);
+      window.removeEventListener('open-referral-screen', handleOpenReferral);
+      window.removeEventListener('open-withdrawal-screen', handleOpenWithdrawal);
+      window.removeEventListener('open-earnings-modal', handleOpenWithdrawal);
+    };
   }, []);
 
   // Apply performance-mode class to body (guarded by settings load to avoid flicker)
@@ -301,6 +317,7 @@ function AppContent() {
       <ReferralModal
         isOpen={isReferralModalOpen}
         onClose={() => setIsReferralModalOpen(false)}
+        initialTab={referralInitialTab}
         defaultEmail={localStorage.getItem('tg_drive_checkout_email') || undefined}
         defaultName={licenseInfo?.customerName || localStorage.getItem('tg_drive_checkout_name') || undefined}
       />

@@ -1,5 +1,5 @@
 import { lazy, useState, useCallback, useMemo, useEffect, useRef } from 'react';
-import { Folder, Download, LogOut, RefreshCw, UploadCloud, MoreVertical, Trash2, Pencil, Globe, Shield, Lock, ChevronDown, ChevronLeft, ChevronRight, Share2, Link, X, Wifi, Activity, Zap, Eye, EyeOff, HelpCircle, Pause, Play, RotateCcw, Sliders, Film, Settings as SettingsIcon, FolderPlus, Bookmark, Search, Sparkles, LayoutGrid, List, HardDrive, KeyRound, ShieldCheck, ShieldAlert, Fingerprint, Clock, Cloud, Image as ImageIcon, FileText, FileCode, Layers, Sun, Moon, CheckSquare, Check, ArrowUpDown, ArrowUp, ArrowDown, CheckCircle2, AlertCircle, Music, WifiOff, User, Copy, Smartphone, Gift } from 'lucide-react';
+import { Folder, Download, LogOut, RefreshCw, UploadCloud, MoreVertical, Trash2, Pencil, Globe, Shield, Lock, ChevronDown, ChevronLeft, ChevronRight, Share2, Link, X, Wifi, Activity, Zap, Eye, EyeOff, HelpCircle, Pause, Play, RotateCcw, Sliders, Film, Settings as SettingsIcon, FolderPlus, Bookmark, Search, Sparkles, LayoutGrid, List, HardDrive, KeyRound, ShieldCheck, ShieldAlert, Fingerprint, Clock, Cloud, Image as ImageIcon, FileText, FileCode, Layers, Sun, Moon, CheckSquare, Check, ArrowUpDown, ArrowUp, ArrowDown, CheckCircle2, AlertCircle, Music, WifiOff, User, Copy, Smartphone, Gift, Wallet } from 'lucide-react';
 import { invoke } from '@tauri-apps/api/core';
 import { onOpenUrl } from '@tauri-apps/plugin-deep-link';
 import { listen } from '@tauri-apps/api/event';
@@ -229,13 +229,20 @@ function StructuredBrandCard({ appVersion }: { appVersion: string }) {
   );
 }
 
+interface NavigationHistoryEntry {
+  tab: MobileTab;
+  settingsSubpage?: SettingsSubpage | null;
+  filesSelectedFolderId?: number | 'saved' | null;
+  activeFolderId?: number | null;
+}
+
 export default function MobileDashboard({ onLogout }: { onLogout?: () => void }) {
   const scrollRootRef = useRef<HTMLElement>(null);
   const { t } = useTranslation();
   const { confirm } = useConfirm();
   const queryClient = useQueryClient();
   const [activeTab, setActiveTab] = useState<MobileTab>('home');
-  const [tabHistory, setTabHistory] = useState<MobileTab[]>([]);
+  const [navHistory, setNavHistory] = useState<NavigationHistoryEntry[]>([]);
   const lastBackPressRef = useRef<number>(0);
   const [settingsSubpage, setSettingsSubpage] = useState<SettingsSubpage | null>(null);
   const [filesSelectedFolderId, setFilesSelectedFolderId] = useState<number | 'saved' | null>(null);
@@ -1237,34 +1244,50 @@ export default function MobileDashboard({ onLogout }: { onLogout?: () => void })
     ? 'Saved Messages'
     : folders.find(f => f.id === activeFolderId)?.name || 'Unknown Channel';
 
+  const openSettingsSubpage = useCallback((subpage: SettingsSubpage) => {
+    setNavHistory(prev => {
+      const last = prev[prev.length - 1];
+      if (last && last.tab === activeTab && last.settingsSubpage === settingsSubpage && last.filesSelectedFolderId === filesSelectedFolderId) {
+        return prev;
+      }
+      return [...prev, { tab: activeTab, settingsSubpage, filesSelectedFolderId, activeFolderId }].slice(-30);
+    });
+    setActiveTab('settings');
+    setSettingsSubpage(subpage);
+  }, [activeTab, settingsSubpage, filesSelectedFolderId, activeFolderId]);
+
   const handleOpenFolderInFilesTab = useCallback((folderId: number | 'saved') => {
+    setNavHistory(prev => {
+      const last = prev[prev.length - 1];
+      if (last && last.tab === activeTab && last.settingsSubpage === settingsSubpage && last.filesSelectedFolderId === filesSelectedFolderId) {
+        return prev;
+      }
+      return [...prev, { tab: activeTab, settingsSubpage, filesSelectedFolderId, activeFolderId }].slice(-30);
+    });
+    setActiveTab('files');
     setFilesSelectedFolderId(folderId);
     setActiveFolderId(folderId === 'saved' ? null : folderId);
-  }, [setActiveFolderId]);
-
-  const handleBackToAllFolders = useCallback(() => {
-    setFilesSelectedFolderId(null);
-  }, []);
+  }, [activeTab, settingsSubpage, filesSelectedFolderId, activeFolderId, setActiveFolderId]);
 
   const handleSwitchTab = useCallback((tab: MobileTab) => {
-    if (tab !== activeTab) {
-      setTabHistory(prev => {
-        const filtered = prev.filter(t => t !== tab);
-        return [...filtered, activeTab].slice(-15);
-      });
+    if (tab === activeTab && settingsSubpage === null && filesSelectedFolderId === null) {
+      return;
     }
+    setNavHistory(prev => {
+      const last = prev[prev.length - 1];
+      if (last && last.tab === activeTab && last.settingsSubpage === settingsSubpage && last.filesSelectedFolderId === filesSelectedFolderId) {
+        return prev;
+      }
+      return [...prev, { tab: activeTab, settingsSubpage, filesSelectedFolderId, activeFolderId }].slice(-30);
+    });
+
     if (tab === 'home') {
       setActiveFolderId(null);
       setFilesSelectedFolderId(null);
     }
-    if (tab === 'settings' && activeTab === 'settings') {
-      setSettingsSubpage(null);
-    }
-    if (tab !== 'settings') {
-      setSettingsSubpage(null);
-    }
+    setSettingsSubpage(null);
     setActiveTab(tab);
-  }, [activeTab, setActiveFolderId]);
+  }, [activeTab, settingsSubpage, filesSelectedFolderId, activeFolderId, setActiveFolderId]);
 
   // Folder action menu state (replaces swipe-to-reveal)
   const [folderActionMenu, setFolderActionMenu] = useState<TelegramFolder | null>(null);
@@ -1279,9 +1302,8 @@ export default function MobileDashboard({ onLogout }: { onLogout?: () => void })
 
   const openMobileSupporter = useCallback(() => {
     setSupporterOfferTrigger(null);
-    setActiveTab('settings');
-    setSettingsSubpage('supporter');
-  }, []);
+    openSettingsSubpage('supporter');
+  }, [openSettingsSubpage]);
 
   const showSupporterOffer = useCallback((_trigger: SupporterPromptTrigger) => {
     // Supporter offer prompt disabled
@@ -1988,6 +2010,18 @@ export default function MobileDashboard({ onLogout }: { onLogout?: () => void })
     };
   }, [previewContextFiles, previewFile, playingFile, pdfFile, archiveViewFile, docFile]);
 
+  const getBackLabel = useCallback((): string => {
+    if (navHistory.length > 0) {
+      const prev = navHistory[navHistory.length - 1];
+      if (prev.tab === 'profile') return t('common.profile', 'Profile');
+      if (prev.tab === 'settings') return t('common.settings', 'Settings');
+      if (prev.tab === 'home') return t('common.home', 'Home');
+      if (prev.tab === 'files') return t('common.files', 'Files');
+      if (prev.tab === 'downloads') return t('common.transfers', 'Transfers');
+    }
+    return t('common.settings', 'Settings');
+  }, [navHistory, t]);
+
   const handleBack = useCallback((): boolean => {
     // 1. Media and document preview modals
     if (previewFile) { setPreviewFile(null); return true; }
@@ -2023,22 +2057,41 @@ export default function MobileDashboard({ onLogout }: { onLogout?: () => void })
       return true;
     }
 
-    // 5. Settings subpages (e.g. supporter, storage, proxy, etc.)
-    if (settingsSubpage !== null) { setSettingsSubpage(null); return true; }
+    // 5. Active search in folder or dashboard
+    if (folderSearch.trim().length > 0) {
+      setFolderSearch('');
+      return true;
+    }
+    if (showMobileSearch || mobileSearchQuery.trim().length > 0) {
+      setShowMobileSearch(false);
+      setMobileSearchQuery('');
+      return true;
+    }
 
-    // 6. Files tab folder navigation
+    // 6. Navigation History Stack (Handles Settings Subpages like Cloud Vault, Folders, Tab history)
+    if (navHistory.length > 0) {
+      const prev = navHistory[navHistory.length - 1];
+      setNavHistory(h => h.slice(0, -1));
+      setActiveTab(prev.tab);
+      setSettingsSubpage(prev.settingsSubpage ?? null);
+      setFilesSelectedFolderId(prev.filesSelectedFolderId ?? null);
+      if (prev.activeFolderId !== undefined) {
+        setActiveFolderId(prev.activeFolderId);
+      }
+      return true;
+    }
+
+    // 7. Fallbacks if history was empty but user is in a subpage or subfolder
+    if (settingsSubpage !== null) {
+      setSettingsSubpage(null);
+      return true;
+    }
+
     if (activeTab === 'files' && filesSelectedFolderId !== null) {
       setFilesSelectedFolderId(null);
       return true;
     }
 
-    // 7. Folder search input active
-    if (folderSearch.trim().length > 0) {
-      setFolderSearch('');
-      return true;
-    }
-
-    // 8. Home screen active filters
     if (activeTab === 'home' && homeMediaTypeFilter !== 'all') {
       setHomeMediaTypeFilter('all');
       return true;
@@ -2049,24 +2102,13 @@ export default function MobileDashboard({ onLogout }: { onLogout?: () => void })
       return true;
     }
 
-    // 9. Tab history navigation
-    if (tabHistory.length > 0) {
-      const prevTab = tabHistory[tabHistory.length - 1];
-      setTabHistory(h => h.slice(0, -1));
-      if (prevTab === 'settings') {
-        setSettingsSubpage(null);
-      }
-      setActiveTab(prevTab);
-      return true;
-    }
-
     if (activeTab !== 'home') {
       setActiveTab('home');
       setActiveFolderId(null);
       return true;
     }
 
-    // 10. Root Home Screen -> Double-back to exit!
+    // 8. Root Home Screen -> Double-back to exit!
     const now = Date.now();
     if (lastBackPressRef.current > 0 && now - lastBackPressRef.current < 2000) {
       return false; // Tells Android to exit app!
@@ -2099,12 +2141,17 @@ export default function MobileDashboard({ onLogout }: { onLogout?: () => void })
     showAutoBackupSheet,
     showCreateFolder,
     showHelp,
+    showMobileSearch,
+    mobileSearchQuery,
     showPinModal,
     showProxyGuide,
+    showSortSheet,
+    showUploadDestinationSheet,
     supporterOfferTrigger,
     t,
-    tabHistory,
+    navHistory,
     vaultModalOpen,
+    isHomeSelectionMode,
   ]);
 
   useEffect(() => {
@@ -2160,8 +2207,8 @@ export default function MobileDashboard({ onLogout }: { onLogout?: () => void })
             <div className="flex items-center gap-2 min-w-0 flex-1">
               <button
                 type="button"
-                onClick={handleBackToAllFolders}
-                className="flex items-center justify-center w-9 h-9 rounded-xl bg-telegram-hover/40 hover:bg-telegram-hover/70 active:scale-95 border border-telegram-border/40 text-telegram-text transition-all shrink-0"
+                onClick={() => handleBack()}
+                className="flex items-center justify-center w-9 h-9 rounded-xl bg-telegram-hover/40 hover:bg-telegram-hover/70 active:scale-95 border border-telegram-border/40 text-telegram-text transition-all shrink-0 cursor-pointer"
                 aria-label="Back to All Folders"
               >
                 <ChevronLeft className="w-5 h-5 text-telegram-primary" />
@@ -2301,12 +2348,12 @@ export default function MobileDashboard({ onLogout }: { onLogout?: () => void })
               <div className="flex items-center gap-2 min-w-0 flex-1">
                 <button
                   type="button"
-                  onClick={() => setSettingsSubpage(null)}
-                  className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-xl bg-telegram-hover/40 hover:bg-telegram-hover/70 active:scale-95 border border-telegram-border/40 text-telegram-primary text-xs font-semibold transition shrink-0"
-                  aria-label="Back to Settings"
+                  onClick={() => handleBack()}
+                  className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-xl bg-telegram-hover/40 hover:bg-telegram-hover/70 active:scale-95 border border-telegram-border/40 text-telegram-primary text-xs font-semibold transition shrink-0 cursor-pointer"
+                  aria-label="Back"
                 >
                   <ChevronLeft className="w-4 h-4" />
-                  <span>{t('common.settings')}</span>
+                  <span>{getBackLabel()}</span>
                 </button>
                 <div className="min-w-0">
                   <h1 className="text-sm font-bold text-telegram-text tracking-tight leading-tight truncate">
@@ -3706,7 +3753,7 @@ export default function MobileDashboard({ onLogout }: { onLogout?: () => void })
                       {themePreference === 'system' ? 'System' : theme}
                     </span>
                   }
-                  onClick={() => setSettingsSubpage('preferences')}
+                  onClick={() => openSettingsSubpage('preferences')}
                 />
 
                 {/* 3. Device Privacy & App Lock Card (Android only) */}
@@ -3723,7 +3770,7 @@ export default function MobileDashboard({ onLogout }: { onLogout?: () => void })
                         {(settings.androidCustomPinEnabled || settings.androidBiometricLock) ? 'Protected' : 'Unprotected'}
                       </span>
                     }
-                    onClick={() => setSettingsSubpage('security')}
+                    onClick={() => openSettingsSubpage('security')}
                   />
                 )}
 
@@ -3741,7 +3788,7 @@ export default function MobileDashboard({ onLogout }: { onLogout?: () => void })
                         {settings.androidWifiOnlyTransfers ? 'Wi-Fi only' : 'All networks'}
                       </span>
                     }
-                    onClick={() => setSettingsSubpage('transfers')}
+                    onClick={() => openSettingsSubpage('transfers')}
                   />
                 )}
 
@@ -3758,7 +3805,7 @@ export default function MobileDashboard({ onLogout }: { onLogout?: () => void })
                       {offlineCache?.file_count ? `${offlineCache.file_count} cached` : '0 cached'}
                     </span>
                   }
-                  onClick={() => setSettingsSubpage('storage')}
+                  onClick={() => openSettingsSubpage('storage')}
                 />
 
                 {/* 7. Connection Diagnostics Card */}
@@ -3774,7 +3821,7 @@ export default function MobileDashboard({ onLogout }: { onLogout?: () => void })
                       {latencyMs !== null && latencyMs >= 0 ? `${latencyMs}ms` : (isConnected ? 'Online' : 'Offline')}
                     </span>
                   }
-                  onClick={() => setSettingsSubpage('diagnostics')}
+                  onClick={() => openSettingsSubpage('diagnostics')}
                 />
 
                 {/* 8. Proxy Configuration Card */}
@@ -3790,7 +3837,7 @@ export default function MobileDashboard({ onLogout }: { onLogout?: () => void })
                       {settings.proxyEnabled ? 'Active' : 'Off'}
                     </span>
                   }
-                  onClick={() => setSettingsSubpage('proxy')}
+                  onClick={() => openSettingsSubpage('proxy')}
                 />
 
                 {/* 9. Media & Playback Card (Android only) */}
@@ -3807,7 +3854,7 @@ export default function MobileDashboard({ onLogout }: { onLogout?: () => void })
                         {settings.androidPlaybackSpeed}×
                       </span>
                     }
-                    onClick={() => setSettingsSubpage('media')}
+                    onClick={() => openSettingsSubpage('media')}
                   />
                 )}
 
@@ -3824,7 +3871,7 @@ export default function MobileDashboard({ onLogout }: { onLogout?: () => void })
                       {supporterStatus.ad_free ? 'Supporter' : 'Free'}
                     </span>
                   }
-                  onClick={() => setSettingsSubpage('supporter')}
+                  onClick={() => openSettingsSubpage('supporter')}
                 />
 
                 {/* About Card & Logout Button */}
@@ -5044,15 +5091,16 @@ export default function MobileDashboard({ onLogout }: { onLogout?: () => void })
               </div>
             </div>
 
-            {/* ── Refer & Earn Real Cash Section ── */}
+            {/* ── Affiliate & Partner Program: Refer & Earn and Earnings & Withdrawals ── */}
             <div className="space-y-2.5">
               <div className="flex items-center gap-2 px-1">
                 <Gift className="w-3.5 h-3.5 text-amber-400" />
-                <span className="text-[11px] font-bold uppercase tracking-wider text-telegram-subtext">Affiliate & Partner</span>
+                <span className="text-[11px] font-bold uppercase tracking-wider text-telegram-subtext">Affiliate &amp; Partner Program</span>
               </div>
 
+              {/* Card 1: Refer & Earn Real Cash */}
               <div 
-                onClick={() => window.dispatchEvent(new CustomEvent('open-referral-modal'))}
+                onClick={() => window.dispatchEvent(new CustomEvent('open-referral-screen'))}
                 className="relative overflow-hidden rounded-2xl bg-gradient-to-br from-amber-500/15 via-orange-500/10 to-telegram-surface border border-amber-500/30 p-4 shadow-sm backdrop-blur-md cursor-pointer active:scale-[0.98] transition-all group"
               >
                 <div className="flex items-center justify-between gap-3">
@@ -5062,15 +5110,39 @@ export default function MobileDashboard({ onLogout }: { onLogout?: () => void })
                     </div>
                     <div>
                       <div className="flex items-center gap-2">
-                        <span className="text-sm font-bold text-telegram-text group-hover:text-amber-400 transition-colors">Refer & Earn Real Cash</span>
+                        <span className="text-sm font-bold text-telegram-text group-hover:text-amber-400 transition-colors">Refer &amp; Earn Real Cash</span>
                         <span className="px-2 py-0.5 rounded-full text-[9px] font-black bg-emerald-500/20 text-emerald-400 border border-emerald-500/30">₹50 / Sale</span>
                       </div>
                       <p className="text-[11px] text-telegram-subtext mt-0.5">
-                        Share your invite link, friends get 10% off, you earn cash with UPI/Bank payout!
+                        Share your invite link, friends get 10% off, you earn ₹50 per friend!
                       </p>
                     </div>
                   </div>
                   <ChevronRight className="w-5 h-5 text-telegram-subtext group-hover:text-amber-400 group-hover:translate-x-0.5 transition-all shrink-0" />
+                </div>
+              </div>
+
+              {/* Card 2: Earnings & Withdrawals */}
+              <div 
+                onClick={() => window.dispatchEvent(new CustomEvent('open-withdrawal-screen'))}
+                className="relative overflow-hidden rounded-2xl bg-gradient-to-br from-cyan-500/15 via-blue-500/10 to-telegram-surface border border-cyan-500/30 p-4 shadow-sm backdrop-blur-md cursor-pointer active:scale-[0.98] transition-all group"
+              >
+                <div className="flex items-center justify-between gap-3">
+                  <div className="flex items-center gap-3">
+                    <div className="w-11 h-11 rounded-xl bg-gradient-to-br from-cyan-400 to-blue-500 flex items-center justify-center text-slate-950 font-black shadow-md shadow-cyan-500/20 shrink-0 group-hover:scale-105 transition-transform">
+                      <Wallet className="w-6 h-6" />
+                    </div>
+                    <div>
+                      <div className="flex items-center gap-2">
+                        <span className="text-sm font-bold text-telegram-text group-hover:text-cyan-400 transition-colors">Earnings &amp; Withdrawals</span>
+                        <span className="px-2 py-0.5 rounded-full text-[9px] font-black bg-cyan-500/20 text-cyan-400 border border-cyan-500/30">Instant Payout</span>
+                      </div>
+                      <p className="text-[11px] text-telegram-subtext mt-0.5">
+                        Check wallet balance, request UPI/Bank payout &amp; view transaction history.
+                      </p>
+                    </div>
+                  </div>
+                  <ChevronRight className="w-5 h-5 text-telegram-subtext group-hover:text-cyan-400 group-hover:translate-x-0.5 transition-all shrink-0" />
                 </div>
               </div>
             </div>
@@ -5095,10 +5167,7 @@ export default function MobileDashboard({ onLogout }: { onLogout?: () => void })
                     {vaultStatus?.is_unlocked ? '🔓 Unlocked' : '🔒 Locked'}
                   </span>
                 }
-                onClick={() => {
-                  setActiveTab('settings');
-                  setSettingsSubpage('vault');
-                }}
+                onClick={() => openSettingsSubpage('vault')}
               />
 
               {/* ── Auto-Backup & Sync Card ── */}
@@ -5309,9 +5378,7 @@ export default function MobileDashboard({ onLogout }: { onLogout?: () => void })
             </p>
             <button
               onClick={() => {
-                setActiveTab('home');
-                setFilesSelectedFolderId(null);
-                setActiveFolderId(null);
+                handleSwitchTab('home');
                 setIsSidebarOpen(false);
               }}
               className={`w-full group text-left p-3 rounded-2xl transition-all duration-200 border flex items-center justify-between ${
@@ -5388,9 +5455,7 @@ export default function MobileDashboard({ onLogout }: { onLogout?: () => void })
                     >
                       <button
                         onClick={() => {
-                          setActiveTab('files');
-                          setFilesSelectedFolderId(folder.id);
-                          setActiveFolderId(folder.id);
+                          handleOpenFolderInFilesTab(folder.id);
                           setIsSidebarOpen(false);
                         }}
                         className="flex-1 flex items-center gap-2.5 text-left min-w-0"

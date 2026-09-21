@@ -1,6 +1,6 @@
 import { act, fireEvent, render, screen } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { DesktopAdBanner } from '../../src/components/desktop/dashboard/DesktopAdBanner';
+import { LegacyDesktopAdBanner as DesktopAdBanner } from '../../src/components/desktop/dashboard/DesktopAdBanner';
 import { sponsorUrlFor } from '../../src/services/sponsorLinks';
 
 const openMock = vi.hoisted(() => vi.fn());

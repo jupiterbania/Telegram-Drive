@@ -214,7 +214,7 @@ export function AutoBackupSheet({ onClose, folders: initialFolders = [], onCreat
   const handleRequestBatteryOptimization = async () => {
     try {
       await requestIgnoreBatteryOptimization();
-      toast.info('Please allow unrestricted battery usage for Telegram Drive');
+      toast.info('Please allow unrestricted battery usage for TG Drive');
       setTimeout(() => {
         isBatteryOptimizationIgnored()
           .then((ignored) => setIsBatteryIgnored(ignored))
@@ -594,6 +594,7 @@ export function AutoBackupSheet({ onClose, folders: initialFolders = [], onCreat
     };
 
     const androidWindow = window as typeof window & { __telegramDriveHandleAndroidBack?: () => boolean };
+    const prevHandler = androidWindow.__telegramDriveHandleAndroidBack;
     androidWindow.__telegramDriveHandleAndroidBack = handleBackAction;
 
     const handleKeyDown = (e: KeyboardEvent) => {
@@ -607,7 +608,11 @@ export function AutoBackupSheet({ onClose, folders: initialFolders = [], onCreat
 
     return () => {
       window.removeEventListener('keydown', handleKeyDown);
-      delete androidWindow.__telegramDriveHandleAndroidBack;
+      if (prevHandler) {
+        androidWindow.__telegramDriveHandleAndroidBack = prevHandler;
+      } else {
+        delete androidWindow.__telegramDriveHandleAndroidBack;
+      }
     };
   }, [configuringPreset, showAddCustom, editingPair, onClose]);
 

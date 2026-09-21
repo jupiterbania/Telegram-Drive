@@ -73,9 +73,9 @@ export function SettingsModal({ isOpen, onClose, initialTab = 'general' }: Setti
     const [offlineCacheLoading, setOfflineCacheLoading] = useState(false);
     const [offlineCacheError, setOfflineCacheError] = useState<string | null>(null);
     const [clearingVariant, setClearingVariant] = useState<string | null>(null); // file_key:quality being cleared
-    const [activeTab, setActiveTab] = useState<SettingsTab>('general');
+    const [activeTab, setActiveTab] = useState<SettingsTab>(initialTab);
     const [settingsSearch, setSettingsSearch] = useState('');
-    const [showGeneralAdvanced, setShowGeneralAdvanced] = useState(false);
+    const [showGeneralAdvanced, setShowGeneralAdvanced] = useState(true);
     const [accessTransparency, setAccessTransparency] = useState<LocalAccessService | null>(null);
     const modalRef = useRef<HTMLDivElement>(null);
     useModalFocus(modalRef, onClose, isOpen && !accessTransparency);
@@ -254,18 +254,6 @@ export function SettingsModal({ isOpen, onClose, initialTab = 'general' }: Setti
         }
     }, []);
 
-    // Load API settings when modal opens
-    useEffect(() => {
-        if (isOpen) {
-            fetchApiSettings();
-            fetchWebDavSettings();
-            setGeneratedKey(null);
-            setKeyCopied(false);
-            setGeneratedWebDavUrl(null);
-            setWebDavUrlCopied(false);
-        }
-    }, [isOpen, fetchApiSettings, fetchWebDavSettings]);
-
     // Fetch transcode cache info
     const fetchTranscodeCache = useCallback(async (refresh = false) => {
         const requestId = ++cacheRequestId.current;
@@ -298,6 +286,20 @@ export function SettingsModal({ isOpen, onClose, initialTab = 'general' }: Setti
             setTranscodeCapabilities(null);
         }
     }, []);
+
+    // Load API and media cache settings when modal opens
+    useEffect(() => {
+        if (isOpen) {
+            fetchApiSettings();
+            fetchWebDavSettings();
+            fetchTranscodeCache();
+            fetchTranscodeCapabilities();
+            setGeneratedKey(null);
+            setKeyCopied(false);
+            setGeneratedWebDavUrl(null);
+            setWebDavUrlCopied(false);
+        }
+    }, [isOpen, fetchApiSettings, fetchWebDavSettings, fetchTranscodeCache, fetchTranscodeCapabilities]);
 
     const fetchOfflineCache = useCallback(async () => {
         setOfflineCacheLoading(true);

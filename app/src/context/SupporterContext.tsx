@@ -38,20 +38,21 @@ interface SupporterContextValue {
 }
 
 const unavailableStatus: SupporterStatus = {
-  state: 'active',
-  ad_free: true,
-  message: 'Ad-free supporter access is enabled.',
+  state: 'inactive',
+  ad_free: false,
+  message: 'Supporter verification is currently unavailable on this device.',
   terms_version: '2026-08-11',
   terms_url: null,
   expires_at: null,
   offline_until: null,
-  recovery_code_saved: true,
+  recovery_code_saved: false,
   checkout_pending: false,
 };
 
 const iosUnavailableStatus: SupporterStatus = {
   ...unavailableStatus,
-  message: 'Ad-free access is active.',
+  state: 'unavailable',
+  message: 'Supporter verification is currently unavailable on iOS.',
 };
 
 const SupporterContext = createContext<SupporterContextValue | null>(null);
@@ -79,9 +80,8 @@ export function SupporterProvider({ children }: { children: ReactNode }) {
     }
     try {
       const next = await invoke<SupporterStatus>('cmd_get_supporter_status');
-      const resolved = { ...next, ad_free: true };
-      setStatus(resolved);
-      return resolved;
+      setStatus(next);
+      return next;
     } catch (error) {
       const next = { ...unavailableStatus, message: error instanceof Error ? error.message : String(error) };
       setStatus(next);

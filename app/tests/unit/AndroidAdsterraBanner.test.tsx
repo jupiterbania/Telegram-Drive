@@ -1,6 +1,6 @@
 import { act, fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import AdsterraBanner from '../../src/components/shared/AdsterraBanner';
+import { LegacyAdsterraBanner as AdsterraBanner } from '../../src/components/shared/AdsterraBanner';
 
 const { supporterStatus } = vi.hoisted(() => ({
   supporterStatus: { current: { state: 'inactive', ad_free: false } },

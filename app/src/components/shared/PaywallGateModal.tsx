@@ -97,6 +97,7 @@ export const PaywallGateModal: React.FC<PaywallGateModalProps> = ({
     discountValue?: number;
     discountedPrice?: number;
     originalPrice?: number;
+    isReferral?: boolean;
   } | null>(null);
   const [validatingCoupon, setValidatingCoupon] = useState(false);
 
@@ -274,6 +275,7 @@ export const PaywallGateModal: React.FC<PaywallGateModalProps> = ({
       const data = (await res.json()) as {
         valid: boolean;
         code?: string;
+        is_referral?: boolean;
         discount_text?: string;
         discount_type?: string;
         discount_value?: number;
@@ -285,17 +287,18 @@ export const PaywallGateModal: React.FC<PaywallGateModalProps> = ({
       if (data.valid) {
         setAppliedCoupon({
           code: data.code || cleanCode,
-          discountText: data.discount_text || 'Discount Applied',
+          discountText: data.discount_text || (data.is_referral ? 'Referral Discount Applied' : 'Discount Applied'),
           discountType: data.discount_type,
           discountValue: data.discount_value,
           discountedPrice: data.new_price,
           originalPrice: data.original_price,
+          isReferral: Boolean(data.is_referral),
         });
         setCouponError(null);
         setShowCouponInput(false);
       } else {
         setAppliedCoupon(null);
-        setCouponError(data.error || 'Invalid or expired coupon code.');
+        setCouponError(data.error || 'Invalid or expired referral or coupon code.');
       }
     } catch {
       setAppliedCoupon(null);
@@ -382,6 +385,7 @@ export const PaywallGateModal: React.FC<PaywallGateModalProps> = ({
           name: cleanName,
           email: cleanEmail,
           coupon_code: appliedCoupon?.code || activeOffer?.coupon_code || '',
+          referral_code: appliedCoupon?.code || '',
         }),
       });
 
@@ -892,10 +896,10 @@ export const PaywallGateModal: React.FC<PaywallGateModalProps> = ({
                       <button
                         type="button"
                         onClick={() => setShowCouponInput(true)}
-                        className="text-[11px] text-cyan-500 hover:text-cyan-600 dark:text-cyan-400/90 dark:hover:text-cyan-300 font-medium inline-flex items-center gap-1.5 transition-colors"
+                        className="text-[11px] text-cyan-500 hover:text-cyan-600 dark:text-cyan-400/90 dark:hover:text-cyan-300 font-semibold inline-flex items-center gap-1.5 transition-colors cursor-pointer"
                       >
                         <Tag className="h-3.5 w-3.5" />
-                        <span>Have a discount coupon code?</span>
+                        <span>Have a Referral Code or Coupon? Apply here</span>
                       </button>
                     ) : (
                       <form onSubmit={handleApplyCoupon} className="flex items-center gap-2 mt-1">
@@ -904,7 +908,7 @@ export const PaywallGateModal: React.FC<PaywallGateModalProps> = ({
                             type="text"
                             value={couponCode}
                             onChange={e => setCouponCode(e.target.value.toUpperCase())}
-                            placeholder="PROMO CODE"
+                            placeholder="ENTER REFERRAL OR PROMO CODE"
                             autoFocus
                             className={`w-full px-3 py-1.5 rounded-lg border text-xs font-mono font-bold uppercase focus:outline-none transition-all shadow-inner ${
                               isLight
@@ -916,7 +920,7 @@ export const PaywallGateModal: React.FC<PaywallGateModalProps> = ({
                         <button
                           type="submit"
                           disabled={validatingCoupon || !couponCode.trim()}
-                          className="px-3.5 py-1.5 rounded-lg bg-cyan-500 hover:bg-cyan-400 text-slate-950 text-xs font-bold transition-all shadow-md shadow-cyan-500/15 disabled:opacity-50 flex items-center gap-1"
+                          className="px-3.5 py-1.5 rounded-lg bg-cyan-500 hover:bg-cyan-400 text-slate-950 text-xs font-bold transition-all shadow-md shadow-cyan-500/15 disabled:opacity-50 flex items-center gap-1 cursor-pointer"
                         >
                           {validatingCoupon ? (
                             <>
@@ -933,7 +937,7 @@ export const PaywallGateModal: React.FC<PaywallGateModalProps> = ({
                             setShowCouponInput(false);
                             setCouponError(null);
                           }}
-                          className="text-slate-400 hover:text-slate-600 dark:hover:text-slate-300 text-xs p-1"
+                          className="text-slate-400 hover:text-slate-600 dark:hover:text-slate-300 text-xs p-1 cursor-pointer"
                         >
                           ✕
                         </button>
@@ -948,9 +952,9 @@ export const PaywallGateModal: React.FC<PaywallGateModalProps> = ({
                   </div>
                 ) : (
                   <div className={`flex items-center justify-between text-xs px-3 py-2 rounded-xl border ${
-                    isLight
-                      ? 'bg-emerald-50 border-emerald-200 text-emerald-700'
-                      : 'bg-emerald-500/10 border-emerald-500/25 text-emerald-400'
+                    appliedCoupon.isReferral
+                      ? isLight ? 'bg-emerald-50 border-emerald-300 text-emerald-800' : 'bg-emerald-500/10 border-emerald-500/30 text-emerald-300'
+                      : isLight ? 'bg-emerald-50 border-emerald-200 text-emerald-700' : 'bg-emerald-500/10 border-emerald-500/25 text-emerald-400'
                   }`}>
                     <div className="flex items-center gap-2">
                       <Tag className="h-3.5 w-3.5 text-emerald-500" />
@@ -969,7 +973,7 @@ export const PaywallGateModal: React.FC<PaywallGateModalProps> = ({
                         setAppliedCoupon(null);
                         setCouponCode('');
                       }}
-                      className="text-slate-400 hover:text-rose-500 text-[11px] font-semibold underline transition-colors"
+                      className="text-[11px] text-slate-400 hover:text-rose-500 underline ml-2 shrink-0 cursor-pointer"
                     >
                       Remove
                     </button>
