@@ -118,9 +118,41 @@ pub fn init_db(app: &AppHandle) -> Result<DbConnection, String> {
          PRAGMA temp_store = MEMORY;",
     );
 
-    let source_layout = retry_initialization_step("database preflight", || {
+    let preflight_result = retry_initialization_step("database preflight", || {
         db_migrations::inspect_schema(&conn)
-    })?;
+    });
+
+    let (conn, source_layout) = match preflight_result {
+        Ok(layout) => (conn, layout),
+        Err(err) => {
+            log::warn!(
+                "Database preflight inspection failed: {}. Creating safe backup and initializing fresh database.",
+                err
+            );
+            drop(conn);
+            let timestamp = chrono::Utc::now().timestamp();
+            let backup_path = dir.join(format!("shares.db.incompatible-{timestamp}.bak"));
+            let _ = std::fs::rename(&db_path, &backup_path);
+            let wal_path = dir.join("shares.db-wal");
+            let shm_path = dir.join("shares.db-shm");
+            let _ = std::fs::remove_file(wal_path);
+            let _ = std::fs::remove_file(shm_path);
+
+            let new_conn = sqlite::open(&db_path).map_err(|e| {
+                format!("Failed to open fresh SQLite database after recovery: {e}")
+            })?;
+            let _ = new_conn.execute(
+                "PRAGMA journal_mode = WAL;
+                 PRAGMA synchronous = NORMAL;
+                 PRAGMA busy_timeout = 5000;
+                 PRAGMA cache_size = -64000;
+                 PRAGMA mmap_size = 268435456;
+                 PRAGMA temp_store = MEMORY;",
+            );
+            (new_conn, db_migrations::SchemaLayout::Empty)
+        }
+    };
+
     log::info!(
         "Recognized SQLite database layout '{}' before initialization.",
         source_layout.label()
@@ -390,6 +422,26 @@ pub fn init_db(app: &AppHandle) -> Result<DbConnection, String> {
             env!("CARGO_PKG_VERSION").replace('\'', "''"),
         );
         retry_initialization_step("file inventory migration", || {
+            conn.execute(&sql).map_err(|error| error.to_string())
+        })?;
+    }
+
+    // Account-owned share links schema v4
+    {
+        let (migration_name, migration_checksum) = db_migrations::account_owned_share_links_migration_record();
+        let sql = format!(
+            "BEGIN IMMEDIATE TRANSACTION;
+            INSERT OR IGNORE INTO app_schema_migrations
+                (version, name, checksum, applied_at, app_version)
+                VALUES (4, '{}', '{}', {}, '{}');
+            COMMIT;",
+            migration_name.replace('\'', "''"),
+            migration_checksum,
+            chrono::Utc::now().timestamp(),
+            env!("CARGO_PKG_VERSION").replace('\'', "''"),
+        );
+        let _ = conn.execute("ALTER TABLE shared_links ADD COLUMN owner_id TEXT;");
+        retry_initialization_step("account-owned share links migration", || {
             conn.execute(&sql).map_err(|error| error.to_string())
         })?;
     }

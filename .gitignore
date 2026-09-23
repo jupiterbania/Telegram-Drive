@@ -28,13 +28,15 @@ CompiledApps/
 Error.html
 **/LatestError.html
 
-# Android local builds
+# Release binary local builds
 /android/
 /app/src-tauri/gen/android/
 *.apk
 *.aab
 *.dmg
 *.ipa
+*.exe
+*.zip
 .gradle/
 local.properties
 *.keystore

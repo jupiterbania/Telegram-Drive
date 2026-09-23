@@ -3,7 +3,7 @@ use sqlite::{Connection, State};
 use std::collections::BTreeSet;
 use std::path::{Path, PathBuf};
 
-const APPLICATION_SCHEMA_VERSION: i64 = 3;
+const APPLICATION_SCHEMA_VERSION: i64 = 4;
 const BASELINE_SCHEMA_VERSION: i64 = 1;
 const ENCRYPTION_SCHEMA_VERSION: i64 = 3;
 const BASELINE_NAME: &str = "baseline_known_schema";
@@ -13,6 +13,9 @@ const SYNC_MIGRATION_NAME: &str = "telegram_folder_sync";
 const SYNC_MIGRATION_DEFINITION: &str = "2:telegram_folder_sync:sync_settings(key,value);sync_pairs(id,local_path,channel_id,folder_key,label,sync_direction,is_active,created_at);sync_state(id,pair_id,relative_path,local_hash,remote_hash,file_size,local_mtime,remote_date,message_id,sync_status);sync_log(id,pair_id,action,relative_path,detail,created_at)";
 const FILE_INVENTORY_MIGRATION_NAME: &str = "telegram_file_inventory";
 const FILE_INVENTORY_MIGRATION_DEFINITION: &str = "3:telegram_file_inventory:file_inventory(folder_key,folder_id,message_id,file_name,file_size,mime_type,file_ext,created_at,icon_type,encryption_state,last_seen_scan,updated_at);file_inventory_state(folder_key,completed_at,file_count)";
+const ACCOUNT_OWNED_MIGRATION_NAME: &str = "account_owned_share_links";
+const ACCOUNT_OWNED_MIGRATION_DEFINITION: &str = "4:account_owned_share_links:shared_links(id,folder_id,message_id,file_name,file_size,password_hash,password_salt,expires_at,revoked,created_at,items_json,owner_id)";
+const ACCOUNT_OWNED_MIGRATION_CHECKSUM_LEGACY: &str = "d637f7938863baeb4963de5e57c05bff77f4261714b108f8a6001ebeef7079bd";
 
 const MIGRATION_LEDGER_SQL: &str = "CREATE TABLE app_schema_migrations (
         version INTEGER PRIMARY KEY,
@@ -273,6 +276,7 @@ pub fn inspect_schema(conn: &Connection) -> Result<SchemaLayout, String> {
         validate_existing_baseline(conn)?;
         validate_sync_migration(conn, has_sync)?;
         validate_file_inventory_migration(conn, has_file_inventory)?;
+        validate_account_owned_migration(conn)?;
         if !(has_groups && has_encryption && has_file_activity) {
             return Err(
                 "Managed database is missing tables required by its recorded schema version. No changes were made."
@@ -485,6 +489,30 @@ fn validate_file_inventory_migration(
     Ok(())
 }
 
+fn validate_account_owned_migration(conn: &Connection) -> Result<(), String> {
+    let mut statement = conn
+        .prepare("SELECT name, checksum FROM app_schema_migrations WHERE version = 4")
+        .map_err(|error| error.to_string())?;
+    if statement.next().map_err(|error| error.to_string())? == State::Row {
+        let name = statement
+            .read::<String, _>(0)
+            .map_err(|error| error.to_string())?;
+        let checksum = statement
+            .read::<String, _>(1)
+            .map_err(|error| error.to_string())?;
+        if name != ACCOUNT_OWNED_MIGRATION_NAME
+            || (checksum != account_owned_migration_checksum()
+                && checksum != ACCOUNT_OWNED_MIGRATION_CHECKSUM_LEGACY)
+        {
+            return Err(
+                "Account-owned share links migration does not match this build. No changes were made."
+                    .to_string(),
+            );
+        }
+    }
+    Ok(())
+}
+
 pub fn sync_migration_record() -> (&'static str, String) {
     (SYNC_MIGRATION_NAME, sync_migration_checksum())
 }
@@ -493,6 +521,13 @@ pub fn file_inventory_migration_record() -> (&'static str, String) {
     (
         FILE_INVENTORY_MIGRATION_NAME,
         file_inventory_migration_checksum(),
+    )
+}
+
+pub fn account_owned_share_links_migration_record() -> (&'static str, String) {
+    (
+        ACCOUNT_OWNED_MIGRATION_NAME,
+        account_owned_migration_checksum(),
     )
 }
 
@@ -661,6 +696,11 @@ fn sync_migration_checksum() -> String {
 
 fn file_inventory_migration_checksum() -> String {
     let digest = Sha256::digest(FILE_INVENTORY_MIGRATION_DEFINITION.as_bytes());
+    digest.iter().map(|byte| format!("{byte:02x}")).collect()
+}
+
+fn account_owned_migration_checksum() -> String {
+    let digest = Sha256::digest(ACCOUNT_OWNED_MIGRATION_DEFINITION.as_bytes());
     digest.iter().map(|byte| format!("{byte:02x}")).collect()
 }
 
@@ -881,12 +921,12 @@ mod tests {
         newer
             .execute(
                 "INSERT INTO app_schema_migrations
-                 VALUES (4, 'future', 'future', 1, '9.0.0')",
+                 VALUES (5, 'future', 'future', 1, '9.0.0')",
             )
             .unwrap();
         assert!(inspect_schema(&newer)
             .unwrap_err()
-            .contains("supports up to 3"));
+            .contains("supports up to 4"));
 
         let modified = connection();
         create_current_schema(&modified);
@@ -987,6 +1027,69 @@ mod tests {
             .bind((2, inventory_checksum.as_str()))
             .unwrap();
         inventory_record.next().unwrap();
+
+        assert_eq!(inspect_schema(&conn).unwrap(), SchemaLayout::Current);
+    }
+
+    #[test]
+    fn accepts_complete_account_owned_share_links_schema_v4() {
+        let conn = connection();
+        create_current_schema(&conn);
+        install_baseline(&conn).unwrap();
+        conn.execute(
+            "CREATE TABLE sync_settings (key TEXT PRIMARY KEY, value TEXT NOT NULL);
+             CREATE TABLE sync_pairs (
+                id INTEGER PRIMARY KEY AUTOINCREMENT, local_path TEXT NOT NULL UNIQUE,
+                channel_id INTEGER NOT NULL, folder_key TEXT NOT NULL, label TEXT,
+                sync_direction TEXT NOT NULL, is_active INTEGER NOT NULL, created_at INTEGER NOT NULL
+             );
+             CREATE TABLE sync_state (
+                id INTEGER PRIMARY KEY AUTOINCREMENT, pair_id INTEGER NOT NULL,
+                relative_path TEXT NOT NULL, local_hash TEXT, remote_hash TEXT,
+                file_size INTEGER NOT NULL, local_mtime INTEGER, remote_date INTEGER,
+                message_id INTEGER, sync_status TEXT NOT NULL, UNIQUE(pair_id, relative_path)
+             );
+             CREATE TABLE sync_log (
+                id INTEGER PRIMARY KEY AUTOINCREMENT, pair_id INTEGER, action TEXT NOT NULL,
+                relative_path TEXT, detail TEXT, created_at INTEGER NOT NULL
+             );
+             CREATE TABLE file_inventory (
+                folder_key TEXT NOT NULL, folder_id INTEGER, message_id INTEGER NOT NULL,
+                file_name TEXT NOT NULL, file_size INTEGER NOT NULL, mime_type TEXT,
+                file_ext TEXT, created_at TEXT NOT NULL, icon_type TEXT NOT NULL,
+                encryption_state TEXT NOT NULL, last_seen_scan TEXT NOT NULL,
+                updated_at INTEGER NOT NULL, PRIMARY KEY(folder_key, message_id)
+             );
+             CREATE TABLE file_inventory_state (
+                folder_key TEXT PRIMARY KEY, completed_at INTEGER NOT NULL,
+                file_count INTEGER NOT NULL
+             );
+             ALTER TABLE shared_links ADD COLUMN owner_id TEXT;",
+        )
+        .unwrap();
+        let (sync_name, sync_checksum) = sync_migration_record();
+        let mut sync_record = conn.prepare(
+            "INSERT INTO app_schema_migrations (version, name, checksum, applied_at, app_version) VALUES (2, ?, ?, 1, 'test')",
+        ).unwrap();
+        sync_record.bind((1, sync_name)).unwrap();
+        sync_record.bind((2, sync_checksum.as_str())).unwrap();
+        sync_record.next().unwrap();
+        let (inventory_name, inventory_checksum) = file_inventory_migration_record();
+        let mut inventory_record = conn.prepare(
+            "INSERT INTO app_schema_migrations (version, name, checksum, applied_at, app_version) VALUES (3, ?, ?, 1, 'test')",
+        ).unwrap();
+        inventory_record.bind((1, inventory_name)).unwrap();
+        inventory_record
+            .bind((2, inventory_checksum.as_str()))
+            .unwrap();
+        inventory_record.next().unwrap();
+        let (v4_name, v4_checksum) = account_owned_share_links_migration_record();
+        let mut v4_record = conn.prepare(
+            "INSERT INTO app_schema_migrations (version, name, checksum, applied_at, app_version) VALUES (4, ?, ?, 1, 'test')",
+        ).unwrap();
+        v4_record.bind((1, v4_name)).unwrap();
+        v4_record.bind((2, v4_checksum.as_str())).unwrap();
+        v4_record.next().unwrap();
 
         assert_eq!(inspect_schema(&conn).unwrap(), SchemaLayout::Current);
     }
