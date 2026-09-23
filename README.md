@@ -24,13 +24,14 @@ Organize, stream, sync, upload, and download files directly to your Telegram clo
 
 Download the latest version **v1.2.0** for your device:
 
-| Platform | Format | Package Type | Download Link |
+| Platform | Format | Architecture / Type | Direct Download Link |
 | :--- | :--- | :--- | :--- |
-| 📱 **Android** | `.apk` | ARM64 Ultra-Compact (~11.7 MB) | [**Download APK**](https://github.com/jupiterbania/Telegram-Drive/releases/download/v1.2.0/TelegramDrive-v1.2.0-release.apk) |
-| 💻 **Windows** | `.exe` | Setup Installer (NSIS) | [**Download Setup**](https://github.com/jupiterbania/Telegram-Drive/releases/download/v1.2.0/Telegram-Drive-v1.2.0-windows-setup.exe) |
-| 💻 **Windows** | `.exe` | Portable Executable | [**Download EXE**](https://github.com/jupiterbania/Telegram-Drive/releases/download/v1.2.0/TelegramDrive-v1.2.0.exe) |
-| 🍏 **macOS** | `.dmg` | Universal Apple Silicon & Intel | [**All Releases**](https://github.com/jupiterbania/Telegram-Drive/releases/tag/v1.2.0) |
-| 🐧 **Linux** | `.deb` / `.tar.zst` | Debian / Arch Linux Packages | [**All Releases**](https://github.com/jupiterbania/Telegram-Drive/releases/tag/v1.2.0) |
+| 📱 **Android** | `.apk` | ARM64 Release (~11.7 MB) | [**TG-Drive-v1.2.0-Android-ARM64.apk**](https://github.com/jupiterbania/Telegram-Drive/releases/download/v1.2.0/TG-Drive-v1.2.0-Android-ARM64.apk) |
+| 💻 **Windows** | `.exe` | Windows x64 Installer (NSIS) | [**TG-Drive-v1.2.0-Windows-x64-Setup.exe**](https://github.com/jupiterbania/Telegram-Drive/releases/download/v1.2.0/TG-Drive-v1.2.0-Windows-x64-Setup.exe) |
+| 💻 **Windows** | `.exe` | Windows x64 Standalone Portable | [**TG-Drive-v1.2.0-Windows-x64-Portable.exe**](https://github.com/jupiterbania/Telegram-Drive/releases/download/v1.2.0/TG-Drive-v1.2.0-Windows-x64-Portable.exe) |
+| 🍏 **macOS** | `.dmg` | Apple Silicon (M1/M2/M3/M4 ARM64) | [**TG-Drive-v1.2.0-macOS-Apple-Silicon-ARM64.dmg**](https://github.com/jupiterbania/Telegram-Drive/releases/download/v1.2.0/TG-Drive-v1.2.0-macOS-Apple-Silicon-ARM64.dmg) |
+| 🍏 **macOS** | `.dmg` | Intel Mac (x86_64) | [**TG-Drive-v1.2.0-macOS-Intel-x64.dmg**](https://github.com/jupiterbania/Telegram-Drive/releases/download/v1.2.0/TG-Drive-v1.2.0-macOS-Intel-x64.dmg) |
+| 🍎 **iOS** | `.ipa` / `.zip` | Direct Install / Simulator | [**TG-Drive-v1.2.0-iOS-Direct-Install.ipa**](https://github.com/jupiterbania/Telegram-Drive/releases/download/v1.2.0/TG-Drive-v1.2.0-iOS-Direct-Install.ipa) |
 
 ---
 
