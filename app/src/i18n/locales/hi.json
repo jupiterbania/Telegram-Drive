@@ -89,7 +89,8 @@
     "duplicates": "डुप्लिकेट",
     "operation_failed": "कार्रवाई पूरी नहीं हो सकी। फिर से कोशिश करें या संबंधित सेटिंग जाँचें।",
     "retry": "फिर से कोशिश करें",
-    "home": "होम"
+    "home": "होम",
+    "profile": "Profile"
   },
   "settings": {
     "tab_sync": "Folder Sync",

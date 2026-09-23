@@ -38,6 +38,8 @@ import { KeyboardShortcutsDialog } from './dashboard/KeyboardShortcutsDialog';
 import { DriveConceptTour } from './dashboard/DriveConceptTour';
 import { LazyFeatureBoundary } from '../shared/LazyFeatureBoundary';
 import { SupporterOfferDialog } from '../shared/SupporterOfferDialog';
+import { PaywallGateModal } from '../shared/PaywallGateModal';
+import { licenseManager } from '../../services/licenseManager';
 import { SyncDashboard } from './sync/SyncDashboard';
 import { Files } from 'lucide-react';
 
@@ -87,8 +89,18 @@ export function Dashboard({ onLogout }: { onLogout: () => void }) {
 
     const { settings, updateSetting, updateSettings, isLoaded: settingsLoaded } = useSettings();
     const { confirm } = useConfirm();
-    const { status: supporterStatus } = useSupporter();
+    const { status: supporterStatus, refreshStatus } = useSupporter();
     const { vaultStatus } = useEncryption();
+    const [showProUpgradeModal, setShowProUpgradeModal] = useState(false);
+    useEffect(() => {
+        if (!userProfile || supporterStatus.ad_free) return;
+
+        void licenseManager.checkTelegramAccount(userProfile.id, userProfile.phone).then((res) => {
+            if (!res.isLicensed && !supporterStatus.ad_free) {
+                setShowProUpgradeModal(true);
+            }
+        });
+    }, [userProfile, supporterStatus.ad_free]);
 
     useEffect(() => {
         if (sessionStorage.getItem('telegram-drive-recovered-session') !== 'true') return;
@@ -1293,6 +1305,26 @@ export function Dashboard({ onLogout }: { onLogout: () => void }) {
             )}
 
             {showHelp && <LazyFeatureBoundary><LazyHelpCenterDialog onClose={() => setShowHelp(false)} /></LazyFeatureBoundary>}
+
+            {showProUpgradeModal && (
+                <PaywallGateModal
+                    isOpen={showProUpgradeModal}
+                    isCompulsory={true}
+                    telegramAccount={{
+                        userId: userProfile?.id,
+                        phoneNumber: userProfile?.phone,
+                        firstName: userProfile?.firstName,
+                        lastName: userProfile?.lastName,
+                        username: userProfile?.username,
+                    }}
+                    onLogout={onLogout}
+                    onActivated={async () => {
+                        setShowProUpgradeModal(false);
+                        await refreshStatus();
+                        toast.success('Telegram Drive Pro activated successfully!');
+                    }}
+                />
+            )}
 
             {supporterOfferTrigger && (
                 <SupporterOfferDialog

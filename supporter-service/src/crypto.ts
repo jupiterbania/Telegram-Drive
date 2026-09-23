@@ -187,3 +187,62 @@ export function timingSafeEqual(a: string, b: string): boolean {
   }
   return diff === 0;
 }
+
+// Verifies HMAC SHA-256 signatures (e.g. for Razorpay and LemonSqueezy webhooks)
+export async function verifyHmacSha256(rawBody: string, signature: string, secret: string): Promise<boolean> {
+  try {
+    const enc = new TextEncoder();
+    const key = await crypto.subtle.importKey(
+      'raw',
+      enc.encode(secret),
+      { name: 'HMAC', hash: 'SHA-256' },
+      false,
+      ['sign']
+    );
+    const expectedSigBuf = await crypto.subtle.sign('HMAC', key, enc.encode(rawBody));
+    const expectedSigHex = Array.from(new Uint8Array(expectedSigBuf))
+      .map(b => b.toString(16).padStart(2, '0'))
+      .join('');
+    return timingSafeEqual(signature.toLowerCase().trim(), expectedSigHex.toLowerCase().trim());
+  } catch {
+    return false;
+  }
+}
+
+// Verifies Telegram WebApp / Login Widget authentication hash
+export async function verifyTelegramAuth(data: Record<string, string | number>, botToken: string): Promise<boolean> {
+  try {
+    const checkHash = String(data.hash || '').toLowerCase().trim();
+    if (!checkHash || !botToken) return false;
+
+    // Filter out hash, sort keys alphabetically and join key=value\n
+    const dataCheckArr: string[] = [];
+    Object.keys(data)
+      .filter(k => k !== 'hash')
+      .sort()
+      .forEach(k => {
+        dataCheckArr.push(`${k}=${data[k]}`);
+      });
+    const dataCheckString = dataCheckArr.join('\n');
+
+    const enc = new TextEncoder();
+    // Telegram secret key is SHA-256 of bot token
+    const secretKeyBuf = await crypto.subtle.digest('SHA-256', enc.encode(botToken));
+    const hmacKey = await crypto.subtle.importKey(
+      'raw',
+      secretKeyBuf,
+      { name: 'HMAC', hash: 'SHA-256' },
+      false,
+      ['sign']
+    );
+    const sigBuf = await crypto.subtle.sign('HMAC', hmacKey, enc.encode(dataCheckString));
+    const calculatedHash = Array.from(new Uint8Array(sigBuf))
+      .map(b => b.toString(16).padStart(2, '0'))
+      .join('');
+
+    return timingSafeEqual(checkHash, calculatedHash);
+  } catch {
+    return false;
+  }
+}
+

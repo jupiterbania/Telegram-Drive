@@ -1,6 +1,7 @@
 import { createContext, useCallback, useContext, useEffect, useMemo, useState, type ReactNode } from 'react';
 import { invoke } from '@tauri-apps/api/core';
 import { type as operatingSystemType } from '@tauri-apps/plugin-os';
+import { licenseManager } from '../services/licenseManager';
 
 export type SupporterState = 'loading' | 'inactive' | 'active' | 'needs_refresh' | 'expired' | 'revoked' | 'unavailable';
 
@@ -31,6 +32,7 @@ interface SupporterContextValue {
   status: SupporterStatus;
   latestRecoveryCode: string | null;
   refreshStatus: () => Promise<SupporterStatus>;
+  checkTelegramAccount: (telegramUserId?: string | number | null, phone?: string | null) => Promise<SupporterStatus>;
   beginCheckout: (termsVersion: string) => Promise<CheckoutStarted>;
   pollCheckout: () => Promise<CheckoutPollResult>;
   activate: (recoveryCode: string, termsVersion: string) => Promise<SupporterStatus>;
@@ -167,10 +169,36 @@ export function SupporterProvider({ children }: { children: ReactNode }) {
     };
   }, [pollCheckout, status.ad_free, status.checkout_pending]);
 
+  const checkTelegramAccount = useCallback(async (telegramUserId?: string | number | null, phone?: string | null) => {
+    if (!telegramUserId && !phone) return status;
+    try {
+      const result = await licenseManager.checkTelegramAccount(telegramUserId, phone);
+      if (result.isLicensed && result.license) {
+        const next: SupporterStatus = {
+          state: 'active',
+          ad_free: true,
+          message: 'Pro Supporter access is active for your Telegram account.',
+          terms_version: '2026-08-11',
+          terms_url: null,
+          expires_at: result.license.expiresAt,
+          offline_until: result.license.expiresAt || (Math.floor(Date.now() / 1000) + 30 * 86400),
+          recovery_code_saved: true,
+          checkout_pending: false,
+        };
+        setStatus(next);
+        return next;
+      }
+    } catch {
+      // ignore network errors
+    }
+    return status;
+  }, [status]);
+
   const value = useMemo<SupporterContextValue>(() => ({
     status,
     latestRecoveryCode,
     refreshStatus,
+    checkTelegramAccount,
     refreshEntitlement,
     beginCheckout,
     pollCheckout,
@@ -179,7 +207,7 @@ export function SupporterProvider({ children }: { children: ReactNode }) {
       setStatus(next);
       return next;
     },
-  }), [beginCheckout, latestRecoveryCode, pollCheckout, refreshEntitlement, refreshStatus, status]);
+  }), [beginCheckout, checkTelegramAccount, latestRecoveryCode, pollCheckout, refreshEntitlement, refreshStatus, status]);
 
   return <SupporterContext.Provider value={value}>{children}</SupporterContext.Provider>;
 }
@@ -189,6 +217,7 @@ export function useSupporter() {
     status: unavailableStatus,
     latestRecoveryCode: null,
     refreshStatus: async () => unavailableStatus,
+    checkTelegramAccount: async () => unavailableStatus,
     beginCheckout: async () => { throw new Error('Supporter activation is unavailable.'); },
     pollCheckout: async () => { throw new Error('Supporter activation is unavailable.'); },
     activate: async () => { throw new Error('Supporter activation is unavailable.'); },

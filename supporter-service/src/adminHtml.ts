@@ -514,8 +514,19 @@ export function renderAdminDashboardHtml(appName: string): string {
         </div>
 
         <div>
-          <label class="block text-xs font-semibold text-slate-300 mb-1">Customer Email / Contact (Optional)</label>
-          <input type="text" id="customerEmailInput" placeholder="e.g. customer@example.com / @telegram_handle" class="w-full px-3 py-2.5 rounded-xl bg-slate-900 border border-slate-700 text-white text-sm focus:outline-none focus:border-cyan-500">
+          <label class="block text-xs font-semibold text-slate-300 mb-1">Customer Email (Optional)</label>
+          <input type="text" id="customerEmailInput" placeholder="e.g. customer@example.com" class="w-full px-3 py-2.5 rounded-xl bg-slate-900 border border-slate-700 text-white text-sm focus:outline-none focus:border-cyan-500">
+        </div>
+
+        <div class="grid grid-cols-2 gap-3">
+          <div>
+            <label class="block text-xs font-semibold text-slate-300 mb-1">Telegram User ID (Optional)</label>
+            <input type="text" id="telegramUserIdInput" placeholder="e.g. 58291039" class="w-full px-3 py-2.5 rounded-xl bg-slate-900 border border-slate-700 text-white text-sm focus:outline-none focus:border-cyan-500">
+          </div>
+          <div>
+            <label class="block text-xs font-semibold text-slate-300 mb-1">Phone Number (Optional)</label>
+            <input type="text" id="phoneNumberInput" placeholder="e.g. +919876543210" class="w-full px-3 py-2.5 rounded-xl bg-slate-900 border border-slate-700 text-white text-sm focus:outline-none focus:border-cyan-500">
+          </div>
         </div>
 
         <div>
@@ -1505,6 +1516,11 @@ export function renderAdminDashboardHtml(appName: string): string {
             <td class="px-6 py-4">
               <div class="text-xs font-semibold text-white">\${l.customer_name || '—'}</div>
               <div class="text-[11px] text-slate-400">\${l.customer_email || l.notes || '—'}</div>
+              \${l.telegram_user_id || l.phone_number ? \`
+                <div class="text-[10px] text-cyan-400 font-mono mt-0.5">
+                  TG: \${l.telegram_user_id ? 'ID ' + l.telegram_user_id : ''}\${l.phone_number ? ' (' + l.phone_number + ')' : ''}
+                </div>
+              \` : ''}
             </td>
             <td class="px-6 py-4">\${planBadge}</td>
             <td class="px-6 py-4">
@@ -1542,6 +1558,8 @@ export function renderAdminDashboardHtml(appName: string): string {
       const maxDevices = parseInt(document.getElementById('maxDevicesSelect').value, 10);
       const name = document.getElementById('customerNameInput').value.trim();
       const email = document.getElementById('customerEmailInput').value.trim();
+      const tgId = document.getElementById('telegramUserIdInput') ? document.getElementById('telegramUserIdInput').value.trim() : '';
+      const phone = document.getElementById('phoneNumberInput') ? document.getElementById('phoneNumberInput').value.trim() : '';
       const notes = document.getElementById('notesInput').value.trim();
 
       try {
@@ -1556,6 +1574,8 @@ export function renderAdminDashboardHtml(appName: string): string {
             max_devices: maxDevices,
             customer_name: name || undefined,
             customer_email: email || undefined,
+            telegram_user_id: tgId || undefined,
+            phone_number: phone || undefined,
             notes: notes || undefined
           })
         });

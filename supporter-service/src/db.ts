@@ -6,6 +6,8 @@ export async function createLicense(
   data: {
     id: string;
     license_key: string;
+    telegram_user_id?: string | null;
+    phone_number?: string | null;
     customer_name?: string | null;
     customer_email?: string | null;
     plan_type: LicensePlan;
@@ -15,15 +17,18 @@ export async function createLicense(
   }
 ): Promise<LicenseRow> {
   const now = Math.floor(Date.now() / 1000);
+  await ensureStoreTables(db);
   await db
     .prepare(
       `INSERT INTO licenses (
-        id, license_key, customer_name, customer_email, plan_type, max_devices, is_banned, notes, created_at, expires_at
-      ) VALUES (?, ?, ?, ?, ?, ?, 0, ?, ?, ?)`
+        id, license_key, telegram_user_id, phone_number, customer_name, customer_email, plan_type, max_devices, is_banned, notes, created_at, expires_at
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, 0, ?, ?, ?)`
     )
     .bind(
       data.id,
       data.license_key,
+      data.telegram_user_id ? String(data.telegram_user_id).trim() : null,
+      data.phone_number ? String(data.phone_number).trim() : null,
       data.customer_name || null,
       data.customer_email || null,
       data.plan_type,
@@ -37,6 +42,8 @@ export async function createLicense(
   return {
     id: data.id,
     license_key: data.license_key,
+    telegram_user_id: data.telegram_user_id || null,
+    phone_number: data.phone_number || null,
     customer_name: data.customer_name || null,
     customer_email: data.customer_email || null,
     plan_type: data.plan_type,
@@ -51,9 +58,95 @@ export async function createLicense(
 
 // Retrieves license by Key
 export async function getLicenseByKey(db: D1Database, key: string): Promise<LicenseRow | null> {
+  await ensureStoreTables(db);
   return await db
     .prepare('SELECT * FROM licenses WHERE license_key = ?')
     .bind(key.trim().toUpperCase())
+    .first<LicenseRow>();
+}
+
+// Normalizes phone numbers to standard digit strings for fuzzy & robust matching
+export function normalizePhone(raw?: string | null): string | null {
+  if (!raw) return null;
+  const digits = raw.replace(/\D/g, '');
+  if (!digits) return null;
+  // If phone has more than 10 digits (e.g. 919876543210 or 09876543210), return last 10 digits as canonical
+  return digits.length >= 10 ? digits.slice(-10) : digits;
+}
+
+// Retrieves active license by Telegram User ID or Phone Number (with phone normalization)
+export async function getLicenseByTelegramAccount(
+  db: D1Database,
+  telegramUserId?: string | null,
+  phoneNumber?: string | null
+): Promise<LicenseRow | null> {
+  await ensureStoreTables(db);
+  const tgId = telegramUserId ? String(telegramUserId).trim() : null;
+  const phone = phoneNumber ? String(phoneNumber).trim() : null;
+  const normPhone = normalizePhone(phone);
+
+  if (!tgId && !phone && !normPhone) return null;
+
+  // 1. Try Telegram User ID first if available
+  if (tgId) {
+    const found = await db
+      .prepare(
+        `SELECT * FROM licenses 
+         WHERE telegram_user_id = ? AND is_banned = 0
+         ORDER BY created_at DESC LIMIT 1`
+      )
+      .bind(tgId)
+      .first<LicenseRow>();
+    if (found) return found;
+  }
+
+  // 2. Try Exact Phone Number match
+  if (phone) {
+    const found = await db
+      .prepare(
+        `SELECT * FROM licenses 
+         WHERE phone_number = ? AND is_banned = 0
+         ORDER BY created_at DESC LIMIT 1`
+      )
+      .bind(phone)
+      .first<LicenseRow>();
+    if (found) return found;
+  }
+
+  // 3. Try Normalized Phone Number (last 10 digits wildcard search)
+  if (normPhone && normPhone.length >= 8) {
+    const pattern = `%${normPhone}%`;
+    const found = await db
+      .prepare(
+        `SELECT * FROM licenses 
+         WHERE phone_number LIKE ? AND is_banned = 0
+         ORDER BY created_at DESC LIMIT 1`
+      )
+      .bind(pattern)
+      .first<LicenseRow>();
+    if (found) return found;
+  }
+
+  return null;
+}
+
+// Retrieves license by Razorpay / LemonSqueezy Order ID or Payment ID stored in notes
+export async function getLicenseByOrderId(
+  db: D1Database,
+  orderId: string
+): Promise<LicenseRow | null> {
+  await ensureStoreTables(db);
+  const cleanOrderId = orderId.trim();
+  if (!cleanOrderId) return null;
+
+  const pattern = `%${cleanOrderId}%`;
+  return await db
+    .prepare(
+      `SELECT * FROM licenses 
+       WHERE notes LIKE ? AND is_banned = 0
+       ORDER BY created_at DESC LIMIT 1`
+    )
+    .bind(pattern)
     .first<LicenseRow>();
 }
 
@@ -63,6 +156,7 @@ export async function listLicenses(
   limit = 100,
   offset = 0
 ): Promise<(LicenseRow & { active_devices_count: number })[]> {
+  await ensureStoreTables(db);
   const result = await db
     .prepare(
       `SELECT l.*, 
@@ -77,22 +171,27 @@ export async function listLicenses(
   return result.results || [];
 }
 
-// Searches licenses by Key, Name, or Email
+// Searches licenses by Key, Name, Email, Telegram ID, or Phone
 export async function searchLicenses(
   db: D1Database,
   query: string
 ): Promise<(LicenseRow & { active_devices_count: number })[]> {
+  await ensureStoreTables(db);
   const q = `%${query.trim()}%`;
   const result = await db
     .prepare(
       `SELECT l.*, 
         (SELECT COUNT(*) FROM device_activations d WHERE d.license_key = l.license_key AND d.is_revoked = 0) as active_devices_count
        FROM licenses l
-       WHERE l.license_key LIKE ? OR l.customer_name LIKE ? OR l.customer_email LIKE ?
+       WHERE l.license_key LIKE ? 
+          OR l.customer_name LIKE ? 
+          OR l.customer_email LIKE ?
+          OR l.telegram_user_id LIKE ?
+          OR l.phone_number LIKE ?
        ORDER BY l.created_at DESC
        LIMIT 50`
     )
-    .bind(q, q, q)
+    .bind(q, q, q, q, q)
     .all<LicenseRow & { active_devices_count: number }>();
 
   return result.results || [];
@@ -426,6 +525,25 @@ export async function ensureStoreTables(db: D1Database): Promise<void> {
       db.prepare(`CREATE INDEX IF NOT EXISTS idx_crash_reports_created_at ON crash_reports(created_at DESC)`),
       db.prepare(`CREATE INDEX IF NOT EXISTS idx_crash_reports_version ON crash_reports(app_version)`),
     ]);
+
+    // Ensure telegram_user_id and phone_number columns exist on licenses table
+    try {
+      await db.prepare(`ALTER TABLE licenses ADD COLUMN telegram_user_id TEXT`).run();
+    } catch {
+      // Column may already exist
+    }
+    try {
+      await db.prepare(`ALTER TABLE licenses ADD COLUMN phone_number TEXT`).run();
+    } catch {
+      // Column may already exist
+    }
+    try {
+      await db.prepare(`CREATE INDEX IF NOT EXISTS idx_licenses_tg_id ON licenses(telegram_user_id)`).run();
+      await db.prepare(`CREATE INDEX IF NOT EXISTS idx_licenses_phone ON licenses(phone_number)`).run();
+    } catch {
+      // Indexes may already exist
+    }
+
     tablesInitialized = true;
   } catch (err) {
     console.error('Error in ensureStoreTables:', err);

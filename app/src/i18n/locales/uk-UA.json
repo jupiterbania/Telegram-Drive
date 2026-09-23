@@ -87,7 +87,10 @@
     "images": "Images",
     "videos": "Videos",
     "documents": "Documents",
-    "other": "Other"
+    "other": "Other",
+    "upload_destination": "Upload Destination",
+    "choose_upload_folder": "Choose which folder to upload to",
+    "profile": "Profile"
   },
   "settings": {
     "tab_sync": "Folder Sync",

@@ -741,7 +741,7 @@ impl TransferEngine {
             current.clone()
         };
         self.persist_and_emit(updated.clone()).await;
-        self.last_progress_emit.lock().await.remove(&job_id);
+        self.last_progress_emit.lock().await.remove(&updated.id);
         if matches!(
             updated.status,
             TransferStatus::Completed | TransferStatus::Cancelled

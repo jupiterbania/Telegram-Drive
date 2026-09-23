@@ -833,6 +833,10 @@ export function renderEveykaHtml(): string {
       const code = appliedDiscount ? appliedDiscount.code : document.getElementById('promoCode').value.trim();
       const btn = document.getElementById('buySubmitBtn');
 
+      const urlParams = new URLSearchParams(window.location.search);
+      const tgId = urlParams.get('tg_id') || urlParams.get('telegram_user_id') || '';
+      const tgPhone = urlParams.get('tg_phone') || urlParams.get('phone') || '';
+
       if (!name) {
         showAlert('Please enter your full name for the certificate.');
         return;
@@ -852,6 +856,8 @@ export function renderEveykaHtml(): string {
           body: JSON.stringify({
             name,
             email,
+            telegram_user_id: tgId,
+            phone_number: tgPhone,
             coupon_code: code,
             referral_code: appliedDiscount && appliedDiscount.is_referral ? appliedDiscount.code : code,
           }),
@@ -865,12 +871,14 @@ export function renderEveykaHtml(): string {
         } else {
           // Fallback to prefilled store link
           const sep = fallbackStoreUrl.includes('?') ? '&' : '?';
-          const prefilled = fallbackStoreUrl + sep + 'prefill[name]=' + encodeURIComponent(name) + '&prefill[email]=' + encodeURIComponent(email);
+          let prefilled = fallbackStoreUrl + sep + 'prefill[name]=' + encodeURIComponent(name) + '&prefill[email]=' + encodeURIComponent(email);
+          if (tgPhone) prefilled += '&prefill[contact]=' + encodeURIComponent(tgPhone);
           window.location.href = prefilled;
         }
       } catch (err) {
         const sep = fallbackStoreUrl.includes('?') ? '&' : '?';
-        const prefilled = fallbackStoreUrl + sep + 'prefill[name]=' + encodeURIComponent(name) + '&prefill[email]=' + encodeURIComponent(email);
+        let prefilled = fallbackStoreUrl + sep + 'prefill[name]=' + encodeURIComponent(name) + '&prefill[email]=' + encodeURIComponent(email);
+        if (tgPhone) prefilled += '&prefill[contact]=' + encodeURIComponent(tgPhone);
         window.location.href = prefilled;
       }
     }
@@ -995,10 +1003,19 @@ export function renderEveykaHtml(): string {
           }
         }
 
-        // Check URL Query Parameters for referral or coupon links (?ref=CODE or ?coupon=CODE)
+        // Check URL Query Parameters for prefilled account details (?name=...&email=...&tg_id=...&tg_phone=...&ref=...&coupon=...)
         const urlParams = new URLSearchParams(window.location.search);
+        const nameParam = urlParams.get('name') || urlParams.get('customer_name');
+        const emailParam = urlParams.get('email') || urlParams.get('customer_email');
         const refParam = urlParams.get('ref') || urlParams.get('referral');
         const couponParam = urlParams.get('coupon') || urlParams.get('code');
+
+        if (nameParam && document.getElementById('custName')) {
+          document.getElementById('custName').value = nameParam.trim();
+        }
+        if (emailParam && document.getElementById('custEmail')) {
+          document.getElementById('custEmail').value = emailParam.trim();
+        }
 
         if (refParam) {
           document.getElementById('promoCode').value = refParam.trim().toUpperCase();

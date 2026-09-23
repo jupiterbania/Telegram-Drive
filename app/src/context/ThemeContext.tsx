@@ -30,7 +30,7 @@ interface ThemeContextType {
 const ThemeContext = createContext<ThemeContextType | undefined>(undefined);
 
 function getSystemTheme(): Theme {
-    return typeof window !== 'undefined' && window.matchMedia('(prefers-color-scheme: light)').matches
+    return typeof window !== 'undefined' && typeof window.matchMedia === 'function' && window.matchMedia('(prefers-color-scheme: light)').matches
         ? 'light'
         : 'dark';
 }

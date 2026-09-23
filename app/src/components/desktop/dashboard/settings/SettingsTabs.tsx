@@ -184,77 +184,202 @@ function SettingsSyncSection({
 
 export function SupporterSettingsSection() {
   const [license, setLicense] = useState<{ isLicensed: boolean; licenseKey: string | null; planType: string | null; hardwareId: string } | null>(null);
-  const [deactivating, setDeactivating] = useState(false);
+  const [telegramUser, setTelegramUser] = useState<{ id: number; firstName: string; phone?: string | null } | null>(null);
+  const [syncing, setSyncing] = useState(false);
+  const [manualKey, setManualKey] = useState('');
+  const [showManual, setShowManual] = useState(false);
+  const [activating, setActivating] = useState(false);
 
-  useEffect(() => {
-    import('../../../../services/licenseManager').then(m => {
-      m.licenseManager.loadLicense().then(setLicense).catch(() => undefined);
-    }).catch(() => undefined);
-  }, []);
-
-  const handleDeactivate = async () => {
-    if (!window.confirm('Deactivate license on this device? You can then use your key on another device.')) return;
-    setDeactivating(true);
+  const loadData = async () => {
     try {
+      const { invoke } = await import('@tauri-apps/api/core');
+      const me = await invoke<{ id: number; firstName: string; phone?: string | null }>('cmd_get_me').catch(() => null);
+      if (me) setTelegramUser(me);
+
       const m = await import('../../../../services/licenseManager');
-      await m.licenseManager.deactivateLicense();
-      toast.success('Device deactivated. Please enter a license key to continue using TG Drive.');
-      window.location.reload();
+      const current = await m.licenseManager.loadLicense();
+      setLicense(current);
+
+      if (me && !current.isLicensed) {
+        const res = await m.licenseManager.checkTelegramAccount(me.id, me.phone);
+        if (res.isLicensed && res.license) {
+          setLicense(res.license);
+        }
+      }
     } catch {
-      toast.error('Failed to deactivate device.');
-    } finally {
-      setDeactivating(false);
+      // ignore
     }
   };
 
-  const maskedKey = license?.licenseKey
-    ? license.licenseKey.slice(0, 6) + '••••-••••-' + license.licenseKey.slice(-4)
-    : 'None';
+  useEffect(() => {
+    void loadData();
+  }, []);
+
+  const handleSyncStatus = async () => {
+    setSyncing(true);
+    try {
+      const m = await import('../../../../services/licenseManager');
+      if (telegramUser) {
+        const res = await m.licenseManager.checkTelegramAccount(telegramUser.id, telegramUser.phone);
+        if (res.isLicensed && res.license) {
+          setLicense(res.license);
+          toast.success('Pro status verified & active for your Telegram account!');
+          return;
+        }
+      }
+      const verified = await m.licenseManager.verifyLicense();
+      const updated = await m.licenseManager.loadLicense();
+      setLicense(updated);
+      if (verified && updated.isLicensed) {
+        toast.success('Pro license is active!');
+      } else {
+        toast.info('No active Pro purchase found for this account.');
+      }
+    } catch {
+      toast.error('Unable to connect to license server.');
+    } finally {
+      setSyncing(false);
+    }
+  };
+
+  const handleManualActivate = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!manualKey.trim()) return;
+    setActivating(true);
+    try {
+      const m = await import('../../../../services/licenseManager');
+      const res = await m.licenseManager.activateLicense(manualKey.trim());
+      if (res.success && res.license) {
+        setLicense(res.license);
+        toast.success('License activated successfully!');
+        setShowManual(false);
+      } else {
+        toast.error(res.message || 'Invalid license key.');
+      }
+    } catch {
+      toast.error('Activation failed.');
+    } finally {
+      setActivating(false);
+    }
+  };
+
+  const isPro = Boolean(license?.isLicensed);
+  const checkoutUrl = (() => {
+    const base = 'https://tg-drive-license-service.jupiterbania472.workers.dev';
+    const params = new URLSearchParams();
+    if (telegramUser?.id) params.set('tg_id', String(telegramUser.id));
+    if (telegramUser?.phone) params.set('tg_phone', telegramUser.phone);
+    if (telegramUser?.firstName) params.set('name', telegramUser.firstName);
+    return `${base}/?${params.toString()}`;
+  })();
 
   return (
-    <section className="space-y-3 rounded-lg border border-app-border-subtle bg-app-surface-sunken/25 p-4">
+    <section className="space-y-4 rounded-xl border border-app-border-subtle bg-app-surface-sunken/25 p-5">
       <div className="flex items-center justify-between">
-        <h3 className="text-sm font-semibold text-app-text flex items-center gap-2">
-          <span>TG Drive: Commercial Pro License</span>
-        </h3>
-        <span className="inline-flex items-center gap-1 rounded-full bg-emerald-500/10 border border-emerald-500/30 px-2.5 py-0.5 text-[10px] font-bold text-emerald-400">
-          ✓ PRO ACTIVE
-        </span>
+        <div className="flex items-center gap-2.5">
+          <Zap className={`h-5 w-5 ${isPro ? 'text-amber-400' : 'text-app-text-secondary'}`} />
+          <div>
+            <h3 className="text-sm font-semibold text-app-text">
+              TG Drive Pro {isPro ? 'Supporter' : 'Membership'}
+            </h3>
+            <p className="text-[11px] text-app-text-secondary">
+              {telegramUser ? `Linked to Telegram ID: ${telegramUser.id}${telegramUser.phone ? ` (${telegramUser.phone})` : ''}` : 'Account Bound Licensing'}
+            </p>
+          </div>
+        </div>
+        {isPro ? (
+          <span className="inline-flex items-center gap-1 rounded-full bg-emerald-500/10 border border-emerald-500/30 px-3 py-1 text-[11px] font-bold text-emerald-400">
+            ✓ PRO ACTIVE
+          </span>
+        ) : (
+          <span className="inline-flex items-center gap-1 rounded-full bg-slate-500/10 border border-slate-500/30 px-3 py-1 text-[11px] font-medium text-app-text-secondary">
+            Free Plan
+          </span>
+        )}
       </div>
 
-      <div className="space-y-1.5 text-xs text-app-text-secondary">
-        <div className="flex justify-between">
-          <span>License Key:</span>
-          <span className="font-mono font-bold text-app-text">{maskedKey}</span>
+      {isPro ? (
+        <div className="space-y-2 rounded-lg bg-emerald-500/5 border border-emerald-500/20 p-3.5 text-xs text-app-text-secondary">
+          <div className="flex justify-between">
+            <span>License Plan:</span>
+            <span className="capitalize font-bold text-emerald-400">{license?.planType || 'Lifetime Pro'}</span>
+          </div>
+          <div className="flex justify-between">
+            <span>Multi-Device Access:</span>
+            <span className="font-semibold text-app-text">Unlimited for this Telegram Account</span>
+          </div>
+          <div className="flex justify-between">
+            <span>Ad-Free Experience:</span>
+            <span className="font-semibold text-emerald-400">Active (All Ads Blocked)</span>
+          </div>
         </div>
-        <div className="flex justify-between">
-          <span>Plan Duration:</span>
-          <span className="capitalize font-semibold text-cyan-400">{license?.planType || 'Lifetime Pro'}</span>
+      ) : (
+        <div className="space-y-3 rounded-lg bg-amber-500/5 border border-amber-500/20 p-3.5 text-xs">
+          <p className="text-app-text font-medium leading-5">
+            Upgrade this Telegram account to <strong>Lifetime Pro</strong> to get maximum download/upload speeds, remove all banners, and access unlimited storage across all your devices!
+          </p>
+          <div className="flex items-center gap-3 pt-1">
+            <a
+              href={checkoutUrl}
+              target="_blank"
+              rel="noreferrer"
+              className="px-4 py-2 rounded-lg bg-gradient-to-r from-amber-500 to-orange-500 hover:from-amber-400 hover:to-orange-400 text-slate-950 font-bold text-xs shadow-md shadow-amber-500/20 transition-all inline-flex items-center gap-1.5"
+            >
+              <span>🚀 Upgrade Account to Pro</span>
+            </a>
+            <button
+              type="button"
+              onClick={handleSyncStatus}
+              disabled={syncing}
+              className="quiet-button px-3 py-2 text-xs font-semibold text-app-text flex items-center gap-1.5"
+            >
+              <RefreshCw className={`h-3.5 w-3.5 ${syncing ? 'animate-spin' : ''}`} />
+              <span>{syncing ? 'Checking…' : 'Already Purchased? Check Status'}</span>
+            </button>
+          </div>
         </div>
-        <div className="flex justify-between">
-          <span>Device Bound:</span>
-          <span className="font-mono text-[11px] text-app-text-secondary">{license?.hardwareId ? license.hardwareId.slice(0, 16) + '…' : 'Local Host'}</span>
-        </div>
-      </div>
+      )}
 
-      <div className="pt-2 border-t border-app-border-subtle flex items-center justify-between">
-        <a
-          href="https://tg-drive-license-service.jupiterbania472.workers.dev/recover"
-          target="_blank"
-          rel="noreferrer"
-          className="text-[11px] font-medium text-cyan-400 hover:text-cyan-300 transition-colors inline-flex items-center gap-1"
-        >
-          <span>Self-Service Portal &rarr;</span>
-        </a>
+      <div className="pt-2 border-t border-app-border-subtle flex items-center justify-between text-xs">
         <button
           type="button"
-          onClick={handleDeactivate}
-          disabled={deactivating}
-          className="quiet-button px-3 py-1.5 text-xs font-semibold text-rose-400 hover:bg-rose-500/10 border-rose-500/20"
+          onClick={() => setShowManual(!showManual)}
+          className="text-[11px] text-cyan-400 hover:underline"
         >
-          {deactivating ? 'Deactivating…' : 'Deactivate This Device'}
+          {showManual ? 'Hide manual key entry' : 'Have a license key or trial voucher?'}
         </button>
+
+        {isPro && (
+          <button
+            type="button"
+            onClick={handleSyncStatus}
+            disabled={syncing}
+            className="text-[11px] text-app-text-secondary hover:text-app-text flex items-center gap-1"
+          >
+            <RefreshCw className={`h-3 w-3 ${syncing ? 'animate-spin' : ''}`} />
+            <span>Sync Status</span>
+          </button>
+        )}
       </div>
+
+      {showManual && (
+        <form onSubmit={handleManualActivate} className="pt-2 flex items-center gap-2">
+          <input
+            type="text"
+            value={manualKey}
+            onChange={(e) => setManualKey(e.target.value)}
+            placeholder="TGD-XXXX-XXXX-XXXX"
+            className="flex-1 px-3 py-1.5 rounded-lg bg-app-surface border border-app-border text-xs font-mono text-app-text placeholder-app-text-secondary focus:outline-none focus:border-cyan-500"
+          />
+          <button
+            type="submit"
+            disabled={activating || !manualKey.trim()}
+            className="px-3 py-1.5 rounded-lg bg-cyan-500 hover:bg-cyan-400 text-slate-950 text-xs font-bold disabled:opacity-50"
+          >
+            {activating ? 'Activating…' : 'Activate'}
+          </button>
+        </form>
+      )}
     </section>
   );
 }

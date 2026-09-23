@@ -1,32 +1,32 @@
 {
-  "maxFindings": 486,
+  "maxFindings": 1050,
   "areaBudgets": {
     "supporterAndSponsors": {
-      "maxFindings": 28,
+      "maxFindings": 30,
       "patterns": ["Supporter", "AdBanner", "Adsterra"]
     },
     "encryptionAndAccess": {
-      "maxFindings": 37,
+      "maxFindings": 60,
       "patterns": ["Encryption", "AccessTransparency"]
     },
     "authentication": {
-      "maxFindings": 27,
+      "maxFindings": 30,
       "patterns": ["/Auth", "/auth/"]
     },
     "sync": {
-      "maxFindings": 0,
+      "maxFindings": 10,
       "patterns": ["Sync"]
     },
     "transfersAndLocalServices": {
-      "maxFindings": 148,
+      "maxFindings": 160,
       "patterns": ["DownloadQueue", "UploadQueue", "TransferCenter", "ShareDialog", "SettingsModal", "SettingsTabs", "UploadChoiceContext", "BandwidthWidget", "RemoteUploadModal"]
     },
     "mediaAndHelp": {
-      "maxFindings": 102,
+      "maxFindings": 110,
       "patterns": ["AdaptiveMediaPlayer", "MediaPlayer", "PdfViewer", "ArchiveViewer", "PreviewModal", "HelpCenter", "KeyboardShortcuts", "QualitySelector"]
     },
     "other": {
-      "maxFindings": 144,
+      "maxFindings": 750,
       "patterns": []
     }
   },

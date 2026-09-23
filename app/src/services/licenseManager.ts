@@ -100,7 +100,9 @@ export class LicenseManager {
   public async activateLicense(
     licenseKey: string,
     deviceName?: string,
-    platform?: string
+    platform?: string,
+    telegramUserId?: string | number | null,
+    phone?: string | null
   ): Promise<{ success: boolean; message?: string; license?: LicenseInfo }> {
     const hwid = await this.getHardwareId();
     const cleanKey = licenseKey.trim().toUpperCase();
@@ -116,6 +118,8 @@ export class LicenseManager {
           hardware_id: hwid,
           device_name: deviceName || 'TG Drive Client',
           platform: platform || 'windows',
+          telegram_user_id: telegramUserId ? String(telegramUserId).trim() : undefined,
+          phone_number: phone ? String(phone).trim() : undefined,
         }),
       });
 
@@ -224,6 +228,137 @@ export class LicenseManager {
         success: false,
         message: err instanceof Error ? err.message : 'Error connecting to trial server.',
       };
+    }
+  }
+
+  // Verifies entitlement by Telegram User ID / Phone Number (Zero-Key seamless flow)
+  public async checkTelegramAccount(
+    telegramUserId?: string | number | null,
+    phone?: string | null
+  ): Promise<{ success: boolean; isLicensed: boolean; message?: string; license?: LicenseInfo }> {
+    const hwid = await this.getHardwareId();
+    const tgId = telegramUserId ? String(telegramUserId).trim() : '';
+    const tgPhone = phone ? String(phone).trim() : '';
+
+    if (!tgId && !tgPhone) {
+      return { success: false, isLicensed: false, message: 'No Telegram account info provided' };
+    }
+
+    try {
+      const response = await fetch(`${this.apiEndpoint}/api/license/check-account`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          telegram_user_id: tgId,
+          phone_number: tgPhone,
+        }),
+      });
+
+      const data = (await response.json()) as {
+        active?: boolean;
+        license_key?: string;
+        plan_type?: LicensePlan;
+        customer_name?: string;
+        customer_email?: string;
+        expires_at?: number | null;
+        token?: string;
+        message?: string;
+      };
+
+      if (response.ok && data.active) {
+        const licenseInfo: LicenseInfo = {
+          isLicensed: true,
+          licenseKey: data.license_key || `TG-PRO-${tgId}`,
+          planType: data.plan_type || 'lifetime',
+          customerName: data.customer_name || null,
+          expiresAt: data.expires_at || null,
+          token: data.token || null,
+          hardwareId: hwid,
+          maxDevices: 999, // Unlocked across all user devices
+          lastVerifiedAt: Math.floor(Date.now() / 1000),
+        };
+
+        localStorage.setItem(STORAGE_KEY_LICENSE, JSON.stringify(licenseInfo));
+        this.currentLicense = licenseInfo;
+
+        return {
+          success: true,
+          isLicensed: true,
+          license: licenseInfo,
+        };
+      }
+
+      return {
+        success: true,
+        isLicensed: false,
+        message: data.message || 'No active pro entitlement found for this Telegram account.',
+      };
+    } catch (err) {
+      return {
+        success: false,
+        isLicensed: false,
+        message: err instanceof Error ? err.message : 'Error connecting to license server.',
+      };
+    }
+  }
+
+  // Polls order status for real-time automatic license unlocking after checkout
+  public async pollOrderStatus(
+    orderIdOrSession: string,
+    email?: string,
+    telegramUserId?: string | number | null,
+    phone?: string | null
+  ): Promise<{ paid: boolean; license?: LicenseInfo }> {
+    const hwid = await this.getHardwareId();
+    try {
+      const response = await fetch(`${this.apiEndpoint}/api/store/order-status`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          order_id: orderIdOrSession,
+          session_id: orderIdOrSession,
+          email: email ? email.trim().toLowerCase() : undefined,
+          telegram_user_id: telegramUserId ? String(telegramUserId).trim() : undefined,
+          phone_number: phone ? String(phone).trim() : undefined,
+        }),
+      });
+
+      if (!response.ok) return { paid: false };
+      const data = (await response.json()) as {
+        paid?: boolean;
+        license_key?: string;
+        plan_type?: LicensePlan;
+        customer_name?: string | null;
+        customer_email?: string | null;
+        expires_at?: number | null;
+        token?: string;
+      };
+
+      if (data.paid && data.license_key) {
+        const licenseInfo: LicenseInfo = {
+          isLicensed: true,
+          licenseKey: data.license_key,
+          planType: data.plan_type || 'lifetime',
+          customerName: data.customer_name || null,
+          expiresAt: data.expires_at || null,
+          token: data.token || null,
+          hardwareId: hwid,
+          maxDevices: 2,
+          lastVerifiedAt: Math.floor(Date.now() / 1000),
+        };
+
+        localStorage.setItem(STORAGE_KEY_LICENSE, JSON.stringify(licenseInfo));
+        this.currentLicense = licenseInfo;
+
+        return {
+          paid: true,
+          license: licenseInfo,
+        };
+      }
+
+      return { paid: false };
+    } catch {
+      return { paid: false };
     }
   }
 

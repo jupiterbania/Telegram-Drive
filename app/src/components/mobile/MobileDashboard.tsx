@@ -24,6 +24,8 @@ import { useEncryption } from '../../hooks/useEncryption';
 const LazyVaultPassphraseModal = lazy(() => import('./VaultPassphraseModal').then((module) => ({ default: module.VaultPassphraseModal })));
 import { MobileSupporterCard } from './MobileSupporterCard';
 import { SupporterOfferDialog } from '../shared/SupporterOfferDialog';
+import { PaywallGateModal } from '../shared/PaywallGateModal';
+import { licenseManager } from '../../services/licenseManager';
 import { usePlatform } from '../../hooks/usePlatform';
 import { useTelegramConnection } from '../../hooks/useTelegramConnection';
 import { useFileUpload } from '../../hooks/useFileUpload';
@@ -254,9 +256,10 @@ export default function MobileDashboard({ onLogout }: { onLogout?: () => void })
   const { isAndroid, isTelevision } = usePlatform();
   const { theme, themePreference, setThemePreference } = useTheme();
   const { settings, updateSetting, updateSettings, isLoaded: settingsLoaded } = useSettings();
-  const { status: supporterStatus } = useSupporter();
+  const { status: supporterStatus, refreshStatus } = useSupporter();
   const [showHelp, setShowHelp] = useState(false);
   const [supporterOfferTrigger, setSupporterOfferTrigger] = useState<SupporterPromptTrigger | null>(null);
+  const [showProUpgradeModal, setShowProUpgradeModal] = useState(false);
 
   // ── Proxy Setup Guide ────────────────────────────────────────────────
   const [showProxyGuide, setShowProxyGuide] = useState(false);
@@ -428,6 +431,16 @@ export default function MobileDashboard({ onLogout }: { onLogout?: () => void })
     handleLogout, handleSyncFolders, handleCreateFolder, handleFolderDelete,
     handleFolderRename, handleFolderToggleVisibility, handleExportFolderInvite
   } = useTelegramConnection(logoutHandler);
+
+  useEffect(() => {
+    if (!userProfile || supporterStatus.ad_free) return;
+
+    void licenseManager.checkTelegramAccount(userProfile.id, userProfile.phone).then((res) => {
+      if (!res.isLicensed && !supporterStatus.ad_free) {
+        setShowProUpgradeModal(true);
+      }
+    });
+  }, [userProfile, supporterStatus.ad_free]);
 
   const [showProfileDetailsModal, setShowProfileDetailsModal] = useState(false);
 
@@ -2023,6 +2036,13 @@ export default function MobileDashboard({ onLogout }: { onLogout?: () => void })
   }, [navHistory, t]);
 
   const handleBack = useCallback((): boolean => {
+    // 0. Referral Modal & Global Top Modal Back Handler
+    const androidWin = window as typeof window & { __tgReferralModalClose?: () => boolean };
+    if (typeof window !== 'undefined' && androidWin.__tgReferralModalClose) {
+      const handled = androidWin.__tgReferralModalClose();
+      if (handled !== false) return true;
+    }
+
     // 1. Media and document preview modals
     if (previewFile) { setPreviewFile(null); return true; }
     if (playingFile) { setPlayingFile(null); return true; }
@@ -5614,6 +5634,26 @@ export default function MobileDashboard({ onLogout }: { onLogout?: () => void })
       )}
 
       {showHelp && <LazyFeatureBoundary><LazyHelpCenterDialog onClose={() => setShowHelp(false)} /></LazyFeatureBoundary>}
+
+      {showProUpgradeModal && (
+        <PaywallGateModal
+          isOpen={showProUpgradeModal}
+          isCompulsory={true}
+          telegramAccount={{
+            userId: userProfile?.id,
+            phoneNumber: userProfile?.phone,
+            firstName: userProfile?.firstName,
+            lastName: userProfile?.lastName,
+            username: userProfile?.username,
+          }}
+          onLogout={handleLogout}
+          onActivated={async () => {
+            setShowProUpgradeModal(false);
+            await refreshStatus();
+            toast.success('Telegram Drive Pro activated successfully!');
+          }}
+        />
+      )}
 
       {supporterOfferTrigger && (
         <SupporterOfferDialog

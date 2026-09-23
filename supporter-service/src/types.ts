@@ -56,6 +56,19 @@ export interface Env {
   GMAIL_APP_PASSWORD?: string;
   RAZORPAY_KEY_ID?: string;
   RAZORPAY_KEY_SECRET?: string;
+  RAZORPAY_WEBHOOK_SECRET?: string;
+  TELEGRAM_BOT_TOKEN?: string;
+}
+
+export interface OrderStatusResponse {
+  paid: boolean;
+  order_id?: string;
+  license_key?: string;
+  plan_type?: LicensePlan;
+  customer_name?: string | null;
+  customer_email?: string | null;
+  expires_at?: number | null;
+  token?: string;
 }
 
 export interface RecoveryOtpRow {
@@ -87,6 +100,8 @@ export interface ActivationRequest {
   hardware_id: string;
   device_name?: string;
   platform?: DevicePlatform;
+  telegram_user_id?: string;
+  phone_number?: string;
 }
 
 export interface VerifyRequest {

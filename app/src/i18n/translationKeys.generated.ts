@@ -124,6 +124,7 @@ export type TranslationKey =
   | 'common.port'
   | 'common.preferences'
   | 'common.press_back_again_to_exit'
+  | 'common.profile'
   | 'common.proxy'
   | 'common.proxy_type'
   | 'common.recents'

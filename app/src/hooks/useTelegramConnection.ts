@@ -156,6 +156,10 @@ export function useTelegramConnection(onLogoutParent: () => void) {
             const profile = await invoke<TelegramUserProfile>('cmd_get_me');
             if (profile) {
                 setUserProfile(profile);
+                // Silently check Pro Supporter status for this Telegram account
+                void import('../services/licenseManager').then(({ licenseManager }) => {
+                    void licenseManager.checkTelegramAccount(profile.id, profile.phone);
+                }).catch(() => {});
             }
         } catch (e) {
             console.warn('Failed to fetch user profile:', e);

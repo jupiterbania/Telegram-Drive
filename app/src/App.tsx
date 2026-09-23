@@ -40,7 +40,6 @@ import { consumeWhatsNew, type WhatsNewDetails } from "./services/updateReliabil
 import { useTvSpatialNavigation } from "./hooks/useTvSpatialNavigation";
 import { ensureLanguageResource } from "./i18n";
 import { useSupporter } from "./context/SupporterContext";
-import { PaywallGateModal } from "./components/shared/PaywallGateModal";
 import { ReferralModal } from "./components/shared/ReferralModal";
 import { licenseManager, type LicenseInfo } from "./services/licenseManager";
 
@@ -55,7 +54,6 @@ interface StartupProgress {
 function AppContent() {
   const [authStatus, setAuthStatus] = useState<AuthStatus>("loading");
   const [licenseInfo, setLicenseInfo] = useState<LicenseInfo | null>(null);
-  const [isCheckingLicense, setIsCheckingLicense] = useState(true);
   const [isReferralModalOpen, setIsReferralModalOpen] = useState(false);
   const [referralInitialTab, setReferralInitialTab] = useState<'referral' | 'earnings'>('referral');
   const [startupProgress, setStartupProgress] = useState<StartupProgress>({
@@ -151,13 +149,10 @@ function AppContent() {
   useEffect(() => {
     licenseManager.loadLicense().then((info) => {
       setLicenseInfo(info);
-      setIsCheckingLicense(false);
       if (info.isLicensed) {
         void licenseManager.verifyLicense().catch(() => undefined);
       }
-    }).catch(() => {
-      setIsCheckingLicense(false);
-    });
+    }).catch(() => {});
   }, []);
 
   // On mount: check for a saved session and auto-restore it.
@@ -310,10 +305,6 @@ function AppContent() {
       )}
       {whatsNew && <WhatsNewDialog details={whatsNew} onClose={() => setWhatsNew(null)} />}
       {isLoaded && <CrashReportingConsent />}
-      <PaywallGateModal
-        isOpen={!isCheckingLicense && (!licenseInfo || !licenseInfo.isLicensed)}
-        onActivated={(lic) => setLicenseInfo(lic)}
-      />
       <ReferralModal
         isOpen={isReferralModalOpen}
         onClose={() => setIsReferralModalOpen(false)}

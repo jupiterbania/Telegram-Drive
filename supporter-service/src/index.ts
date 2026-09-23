@@ -14,12 +14,15 @@ import {
   getDevicesForLicense,
   getLatestOtpForEmail,
   getLicenseByKey,
+  getLicenseByOrderId,
+  getLicenseByTelegramAccount,
   getLicensesByEmail,
   getStoreSetting,
   incrementCouponUsage,
   incrementOtpAttempts,
   listCoupons,
   listLicenses,
+  normalizePhone,
   recordAdminLog,
   resetDevicesForLicense,
   saveOtpRecord,
@@ -47,7 +50,9 @@ import {
   issueLicenseToken,
   sha256Hex,
   timingSafeEqual,
+  verifyHmacSha256,
   verifyLicenseToken,
+  verifyTelegramAuth,
 } from './crypto';
 import { renderAdminDashboardHtml } from './adminHtml';
 import { renderRecoveryHtml } from './recoveryHtml';
@@ -230,6 +235,8 @@ export default {
           const license = await createLicense(env.DB, {
             id,
             license_key: key,
+            telegram_user_id: body.telegram_user_id,
+            phone_number: body.phone_number,
             customer_name: body.customer_name,
             customer_email: body.customer_email,
             plan_type: body.plan_type || 'lifetime',
@@ -1264,6 +1271,10 @@ export default {
           email: string;
           coupon_code?: string;
           referral_code?: string;
+          telegram_user_id?: string;
+          phone_number?: string;
+          tg_id?: string;
+          tg_phone?: string;
         };
 
         if (!body.name || !body.name.trim()) {
@@ -1277,6 +1288,10 @@ export default {
 
         const cleanName = body.name.trim();
         const cleanEmail = body.email.trim().toLowerCase();
+        const tgUserId = (body.telegram_user_id || body.tg_id || '').trim();
+        const rawPhone = (body.phone_number || body.tg_phone || '').trim();
+        const normPhone = normalizePhone(rawPhone);
+        const tgPhone = normPhone || rawPhone;
 
         const basePriceStr = await getStoreSetting(env.DB, 'live_price', '399');
         const basePrice = Math.round(parseFloat(basePriceStr) || 399);
@@ -1327,30 +1342,36 @@ export default {
           }
         }
 
-        // 3. Check for Refer & Earn referral code
+        // 3. Check for Refer & Earn referral code (with Anti-Self-Referral guard)
         let validReferralCode = '';
         const candidateReferral = (body.referral_code || body.coupon_code || '').trim().toUpperCase();
         if (candidateReferral) {
           const refProfile = await getReferralProfileByCode(env.DB, candidateReferral);
-          if (refProfile && refProfile.user_email.toLowerCase() !== cleanEmail) {
-            validReferralCode = refProfile.referral_code;
-            if (!validCouponCode) {
-              const friendDiscType = await getStoreSetting(env.DB, 'referral_friend_discount_type', 'percent');
-              const friendDiscVal = parseFloat(await getStoreSetting(env.DB, 'referral_friend_discount_value', '10')) || 10;
-              let refDiscount = 0;
-              if (friendDiscType === 'percent') {
-                refDiscount = (finalPrice * friendDiscVal) / 100;
-              } else {
-                refDiscount = friendDiscVal;
+          if (refProfile) {
+            // Anti-fraud check: Prevent referrer from using their own referral code
+            const isSelfEmail = refProfile.user_email.toLowerCase() === cleanEmail;
+            if (!isSelfEmail) {
+              validReferralCode = refProfile.referral_code;
+              if (!validCouponCode) {
+                const friendDiscType = await getStoreSetting(env.DB, 'referral_friend_discount_type', 'percent');
+                const friendDiscVal = parseFloat(await getStoreSetting(env.DB, 'referral_friend_discount_value', '10')) || 10;
+                let refDiscount = 0;
+                if (friendDiscType === 'percent') {
+                  refDiscount = (finalPrice * friendDiscVal) / 100;
+                } else {
+                  refDiscount = friendDiscVal;
+                }
+                finalPrice = Math.max(1, Math.round(finalPrice - refDiscount));
+                discountNotes.push(`Referral ${validReferralCode}: ${friendDiscVal}% OFF`);
               }
-              finalPrice = Math.max(1, Math.round(finalPrice - refDiscount));
-              discountNotes.push(`Referral ${validReferralCode}: ${friendDiscVal}% OFF`);
             }
           }
         }
 
         finalPrice = Math.max(1, Math.round(finalPrice));
 
+        // Generate unique checkout tracking session ID
+        const checkoutSessionId = 'chk_' + crypto.randomUUID().replace(/-/g, '').slice(0, 16);
         let paymentUrl = await getStoreSetting(env.DB, 'store_url', env.STORE_URL || 'https://rzp.io/rzp/eBLEV0w');
 
         if (env.RAZORPAY_KEY_ID && env.RAZORPAY_KEY_SECRET) {
@@ -1370,20 +1391,26 @@ export default {
                 customer: {
                   name: cleanName,
                   email: cleanEmail,
+                  contact: tgPhone || undefined,
                 },
                 notify: { sms: false, email: true },
                 reminder_enable: true,
                 notes: {
                   product: 'tg_drive_lifetime_pro',
+                  checkout_session_id: checkoutSessionId,
                   name: cleanName,
                   email: cleanEmail,
+                  telegram_user_id: tgUserId,
+                  phone_number: tgPhone,
+                  tg_id: tgUserId,
+                  tg_phone: tgPhone,
                   coupon: validCouponCode,
                   referral_code: validReferralCode,
                 },
               }),
             });
 
-            const plData = (await plRes.json()) as { short_url?: string };
+            const plData = (await plRes.json()) as { short_url?: string; id?: string };
             if (plRes.ok && plData.short_url) {
               paymentUrl = plData.short_url;
             }
@@ -1395,16 +1422,174 @@ export default {
         return jsonResponse({
           success: true,
           payment_url: paymentUrl,
+          order_id: checkoutSessionId,
+          session_id: checkoutSessionId,
           name: cleanName,
           email: cleanEmail,
+          telegram_user_id: tgUserId || null,
+          phone_number: tgPhone || null,
           final_price: finalPrice,
           formatted_price: `₹${finalPrice}`,
         });
       }
 
       // -------------------------------------------------------------
+      // 2.7 Real-time Order Status Polling (/api/store/order-status)
+      // -------------------------------------------------------------
+      if (url.pathname === '/api/store/order-status' && (request.method === 'GET' || request.method === 'POST')) {
+        let orderId = url.searchParams.get('order_id') || url.searchParams.get('session_id') || '';
+        let email = url.searchParams.get('email') || '';
+        let telegramUserId = url.searchParams.get('telegram_user_id') || url.searchParams.get('tg_id') || '';
+        let phone = url.searchParams.get('phone_number') || url.searchParams.get('phone') || '';
+
+        if (request.method === 'POST') {
+          try {
+            const body = (await request.json()) as Record<string, string>;
+            orderId = body.order_id || body.session_id || orderId;
+            email = body.email || email;
+            telegramUserId = body.telegram_user_id || body.tg_id || telegramUserId;
+            phone = body.phone_number || body.phone || phone;
+          } catch {
+            // ignore
+          }
+        }
+
+        orderId = orderId.trim();
+        email = email.trim().toLowerCase();
+        telegramUserId = telegramUserId.trim();
+        phone = phone.trim();
+
+        let license: LicenseRow | null = null;
+        if (orderId) {
+          license = await getLicenseByOrderId(env.DB, orderId);
+        }
+        if (!license && email) {
+          const licList = await getLicensesByEmail(env.DB, email);
+          license = licList[0] || null;
+        }
+        if (!license && (telegramUserId || phone)) {
+          license = await getLicenseByTelegramAccount(env.DB, telegramUserId || null, phone || null);
+        }
+
+        if (license && license.is_banned === 0) {
+          const now = Math.floor(Date.now() / 1000);
+          if (!license.expires_at || license.expires_at > now) {
+            const claims: LicenseClaims = {
+              sub: license.telegram_user_id || license.license_key,
+              tg_id: license.telegram_user_id || undefined,
+              phone: license.phone_number || undefined,
+              plan: license.plan_type,
+              exp: license.expires_at,
+              iat: now,
+              iss: 'tg-drive-licensing',
+              name: license.customer_name || undefined,
+            };
+            const token = await issueLicenseToken(claims, env);
+            return jsonResponse({
+              paid: true,
+              license_key: license.license_key,
+              plan_type: license.plan_type,
+              customer_name: license.customer_name,
+              customer_email: license.customer_email,
+              expires_at: license.expires_at,
+              token,
+              order_id: orderId || undefined,
+            });
+          }
+        }
+
+        return jsonResponse({ paid: false });
+      }
+
+      // -------------------------------------------------------------
       // 3. Client App License APIs
       // -------------------------------------------------------------
+
+      // GET /api/license/check-account or POST /api/license/check-account
+      // Instant automated entitlement verification by Telegram User ID / Phone Number
+      if (url.pathname === '/api/license/check-account' && (request.method === 'GET' || request.method === 'POST')) {
+        let telegramUserId = url.searchParams.get('telegram_user_id') || url.searchParams.get('tg_id') || '';
+        let phoneNumber = url.searchParams.get('phone_number') || url.searchParams.get('phone') || '';
+
+        if (request.method === 'POST') {
+          try {
+            const body = (await request.json()) as {
+              telegram_user_id?: string;
+              phone_number?: string;
+              tg_id?: string;
+              phone?: string;
+              auth_data?: Record<string, string | number>;
+            };
+            telegramUserId = body.telegram_user_id || body.tg_id || telegramUserId;
+            phoneNumber = body.phone_number || body.phone || phoneNumber;
+
+            // Optional Telegram signature verification if Bot Token configured
+            if (body.auth_data && env.TELEGRAM_BOT_TOKEN) {
+              const isAuthValid = await verifyTelegramAuth(body.auth_data, env.TELEGRAM_BOT_TOKEN);
+              if (!isAuthValid) {
+                return jsonResponse({ active: false, error: 'Telegram authentication signature verification failed' }, 401);
+              }
+            }
+          } catch {
+            // ignore body parse error
+          }
+        }
+
+        telegramUserId = telegramUserId.trim();
+        phoneNumber = phoneNumber.trim();
+
+        if (!telegramUserId && !phoneNumber) {
+          return jsonResponse({ active: false, error: 'Missing telegram_user_id or phone_number' }, 400);
+        }
+
+        const license = await getLicenseByTelegramAccount(env.DB, telegramUserId || null, phoneNumber || null);
+
+        if (!license || license.is_banned === 1) {
+          return jsonResponse({
+            active: false,
+            message: license ? (license.ban_reason || 'License banned') : 'No active supporter entitlement found for this Telegram account',
+          }, 200);
+        }
+
+        const now = Math.floor(Date.now() / 1000);
+        if (license.expires_at && license.expires_at < now) {
+          return jsonResponse({
+            active: false,
+            message: 'License has expired',
+            expired: true,
+            expires_at: license.expires_at,
+          }, 200);
+        }
+
+        // Issue cryptographically signed Ed25519 token for offline grace & client validation
+        const claims: LicenseClaims = {
+          sub: license.telegram_user_id || license.license_key,
+          tg_id: license.telegram_user_id || telegramUserId || undefined,
+          phone: license.phone_number || phoneNumber || undefined,
+          plan: license.plan_type,
+          exp: license.expires_at,
+          iat: now,
+          iss: 'tg-drive-licensing',
+          name: license.customer_name || undefined,
+        };
+
+        const token = await issueLicenseToken(claims, env);
+
+        return jsonResponse({
+          active: true,
+          license_key: license.license_key,
+          plan_type: license.plan_type,
+          customer_name: license.customer_name,
+          customer_email: license.customer_email,
+          telegram_user_id: license.telegram_user_id,
+          phone_number: license.phone_number,
+          expires_at: license.expires_at,
+          token,
+          terms_version: '2026-08-11',
+          ad_free: true,
+          message: 'Supporter access is active for your Telegram account.',
+        });
+      }
 
       // POST /api/license/activate
       if (url.pathname === '/api/license/activate' && request.method === 'POST') {
@@ -1500,6 +1685,24 @@ export default {
           device_name: body.device_name || 'My Device',
           platform: body.platform || 'windows',
         });
+
+        // Automatically bind Telegram Account to this license if provided
+        if (body.telegram_user_id || body.phone_number) {
+          try {
+            await env.DB.prepare(`
+              UPDATE licenses 
+              SET telegram_user_id = COALESCE(telegram_user_id, ?),
+                  phone_number = COALESCE(phone_number, ?)
+              WHERE license_key = ?
+            `).bind(
+              body.telegram_user_id ? String(body.telegram_user_id).trim() : null,
+              body.phone_number ? String(body.phone_number).trim() : null,
+              cleanKey
+            ).run();
+          } catch {
+            // Ignore if DB update fails non-critically
+          }
+        }
 
         // Generate signed token
         const claims: LicenseClaims = {
@@ -1794,6 +1997,17 @@ export default {
       // -------------------------------------------------------------
       if ((url.pathname === '/api/webhooks/razorpay' || url.pathname === '/api/webhook' || url.pathname === '/webhook') && request.method === 'POST') {
         const rawBody = await request.text();
+
+        // Verify Razorpay Webhook HMAC Signature if secret is configured
+        if (env.RAZORPAY_WEBHOOK_SECRET) {
+          const signature = request.headers.get('x-razorpay-signature') || '';
+          const isValid = await verifyHmacSha256(rawBody, signature, env.RAZORPAY_WEBHOOK_SECRET);
+          if (!isValid) {
+            console.error('[RAZORPAY_WEBHOOK] Invalid HMAC signature');
+            return jsonResponse({ error: 'Invalid webhook signature' }, 401);
+          }
+        }
+
         const payload = JSON.parse(rawBody) as {
           event?: string;
           payload?: {
@@ -1801,6 +2015,7 @@ export default {
               entity?: {
                 id?: string;
                 email?: string;
+                contact?: string;
                 notes?: Record<string, string>;
                 amount?: number;
               };
@@ -1811,6 +2026,7 @@ export default {
                 customer?: {
                   email?: string;
                   name?: string;
+                  contact?: string;
                 };
               };
             };
@@ -1855,12 +2071,31 @@ export default {
             paymentEntity?.notes?.['Full Name'] ||
             'Valued Customer';
 
+          const telegramUserId = paymentEntity?.notes?.telegram_user_id ||
+            paymentEntity?.notes?.tg_id ||
+            orderEntity?.notes?.telegram_user_id ||
+            orderEntity?.notes?.tg_id ||
+            null;
+
+          const rawPhone = paymentEntity?.notes?.phone_number ||
+            paymentEntity?.notes?.tg_phone ||
+            paymentEntity?.notes?.phone ||
+            paymentEntity?.contact ||
+            plinkCustomer?.contact ||
+            orderEntity?.notes?.phone ||
+            null;
+          const phoneNumber = normalizePhone(rawPhone) || rawPhone;
+
+          const checkoutSessionId = paymentEntity?.notes?.checkout_session_id ||
+            orderEntity?.notes?.checkout_session_id ||
+            '';
+
           const orderId = paymentEntity?.id || payload.payload?.payment_link?.entity?.id || orderEntity?.id || 'RZP-' + Date.now();
 
           if (email) {
             // Check if license already exists for this exact order ID (Deduplication against multiple Razorpay webhooks)
             const existingLicenses = await getLicensesByEmail(env.DB, email);
-            const existingMatch = existingLicenses.find(l => l.notes && l.notes.includes(orderId));
+            const existingMatch = existingLicenses.find(l => l.notes && (l.notes.includes(orderId) || (checkoutSessionId && l.notes.includes(checkoutSessionId))));
 
             if (existingMatch) {
               console.log(`[RAZORPAY_WEBHOOK] Order ${orderId} already processed (License: ${existingMatch.license_key}). Skipping duplicate email.`);
@@ -1870,14 +2105,18 @@ export default {
             const key = generateLicenseKey();
             const id = crypto.randomUUID();
 
+            const noteContent = `Razorpay Payment ID: ${orderId}${checkoutSessionId ? ` Session: ${checkoutSessionId}` : ''}`;
+
             await createLicense(env.DB, {
               id,
               license_key: key,
+              telegram_user_id: telegramUserId,
+              phone_number: phoneNumber,
               customer_name: name,
               customer_email: email,
               plan_type: 'lifetime',
               max_devices: parseInt(env.MAX_DEFAULT_DEVICES || '2', 10),
-              notes: `Razorpay Payment ID: ${orderId}`,
+              notes: noteContent,
             });
 
             await recordAdminLog(env.DB, 'RAZORPAY_ORDER', key, `Auto-generated for ${email}`);
@@ -1890,7 +2129,10 @@ export default {
             if (referralCode) {
               try {
                 const referrer = await getReferralProfileByCode(env.DB, referralCode);
-                if (referrer && referrer.user_email.toLowerCase() !== email.toLowerCase()) {
+                // Strict Anti-Fraud / Anti-Self-Referral Check
+                const isSelfEmail = referrer && referrer.user_email.toLowerCase() === email.toLowerCase();
+                
+                if (referrer && !isSelfEmail) {
                   const referralEnabled = (await getStoreSetting(env.DB, 'referral_enabled', '1')) === '1';
                   if (referralEnabled) {
                     const rewardType = await getStoreSetting(env.DB, 'referral_reward_type', 'fixed');

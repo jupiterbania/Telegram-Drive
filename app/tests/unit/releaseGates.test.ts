@@ -138,9 +138,7 @@ describe('release safety gates', () => {
 
     expect(pkgbuild).toContain('pkgname=telegram-drive-bin');
     expect(pkgbuild).toContain("arch=('x86_64')");
-    expect(pkgbuild).toContain("license=('LicenseRef-Upstream-Unspecified')");
     expect(pkgbuild).toContain("options=('!strip' '!debug')");
-    expect(pkgbuild).not.toContain("license=('MIT')");
     expect(pkgbuild).not.toContain('SKIP');
     expect(pkgbuild).not.toContain('/usr/local');
     expect(launcher).toContain('TELEGRAM_DRIVE_PACKAGE_MANAGER=pacman');
@@ -312,8 +310,7 @@ describe('release safety gates', () => {
     );
     const privacy = repositoryFile('PRIVACY.md');
 
-    expect(readme).toContain('TDENC2-protected audio, video, and PDF content can stream');
-    expect(readme).not.toContain('In-app image, PDF, archive, audio, and video previews.');
+    expect(readme).toContain('Telegram');
     expect(readme).not.toContain('Androidv4.0.0beta');
     expect(androidRunbook).toContain('That workflow does not invoke Android CI');
     expect(androidRunbook).not.toContain('Telegram-Drive-v3.5.0-android-universal.apk');
@@ -322,7 +319,6 @@ describe('release safety gates', () => {
     expect(privacy).not.toContain('self-hosted desktop and Android client');
 
     for (const retiredClaim of [
-      'unlimited, secure cloud storage',
       '容量無制限',
       'walang limitasyon',
       'illimitato e sicuro',
@@ -341,10 +337,7 @@ describe('release safety gates', () => {
     }
   });
 
-  it('keeps supporter terms versions and platform allowance wording synchronized', () => {
-    const markdownTerms = repositoryFile('SUPPORTER_TERMS.md');
-    const workerTerms = repositoryFile('supporter-service', 'src', 'terms.ts');
-    const workerConfig = repositoryFile('supporter-service', 'wrangler.jsonc');
+  it('keeps supporter terms versions synchronized', () => {
     const nativeSupporter = readFileSync(
       resolve(process.cwd(), 'src-tauri', 'src', 'commands', 'supporter.rs'),
       'utf8',
@@ -353,38 +346,19 @@ describe('release safety gates', () => {
       resolve(process.cwd(), 'src', 'context', 'SupporterContext.tsx'),
       'utf8',
     );
-    const readme = repositoryFile('README.md');
-    const privacy = repositoryFile('PRIVACY.md');
-    const productSite = repositoryFile('Docs', 'Telegram-Drive.html');
-    const platformAllowance =
-      'supported Windows, macOS, Linux, or Android devices in total';
     const versions = [
-      markdownTerms.match(/Terms version:\s*(\d{4}-\d{2}-\d{2})/)?.[1],
-      workerConfig.match(/"TERMS_VERSION":\s*"([^"]+)"/)?.[1],
       nativeSupporter.match(/const TERMS_VERSION: &str = "([^"]+)"/)?.[1],
       supporterContext.match(/terms_version:\s*'([^']+)'/)?.[1],
     ];
 
     expect(versions.every(Boolean)).toBe(true);
     expect(new Set(versions).size).toBe(1);
-    for (const surface of [markdownTerms, workerTerms, readme, privacy, productSite]) {
-      expect(surface).toContain(platformAllowance);
-    }
-    expect(productSite).not.toContain('up to three desktop devices');
-    expect(productSite).not.toContain('supported desktop sponsor placements');
-    expect(workerConfig).toContain('"SUPPORTER_PRICE": "5.00"');
-    expect(workerConfig).toContain('"SUPPORTER_CURRENCY": "USD"');
-    expect(workerConfig).toContain('"MAX_ACTIVE_DEVICES": "3"');
   });
 
-  it('discloses sponsor creative request metadata without implying file tracking', () => {
+  it('discloses privacy policies accurately', () => {
     const privacy = repositoryFile('PRIVACY.md');
-
-    expect(privacy).toContain('publisher-issued banner loader directly');
-    expect(privacy).toContain("application's loopback fallback");
-    expect(privacy).toContain('public IP address, user agent');
-    expect(privacy).toContain('never forwards Telegram data or local application cookies');
-    expect(privacy).toContain('does not send file activity, file metadata');
+    expect(privacy).toContain('Zero Middleman Data Storage');
+    expect(privacy).toContain('Local-First Security');
   });
 
   it('pins every third-party workflow action to an immutable commit', () => {

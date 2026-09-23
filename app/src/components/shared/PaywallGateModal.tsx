@@ -18,6 +18,9 @@ import {
   ClipboardPaste,
   Zap,
   Gift,
+  X,
+  Phone,
+  LogOut,
 } from 'lucide-react';
 import { licenseManager, type LicenseInfo } from '../../services/licenseManager';
 import { openExternalUrl } from '../../utils/url';
@@ -54,10 +57,22 @@ interface StoreConfigInfo {
   trial_label?: string;
 }
 
+export interface TelegramAccountCheckoutInfo {
+  userId?: string | number | null;
+  phoneNumber?: string | null;
+  firstName?: string | null;
+  lastName?: string | null;
+  username?: string | null;
+}
+
 interface PaywallGateModalProps {
   isOpen: boolean;
   onActivated: (license: LicenseInfo) => void;
+  onClose?: () => void;
+  onLogout?: () => void;
+  isCompulsory?: boolean;
   purchaseUrl?: string;
+  telegramAccount?: TelegramAccountCheckoutInfo | null;
 }
 
 const DEFAULT_PERKS = [
@@ -71,7 +86,11 @@ const DEFAULT_PERKS = [
 export const PaywallGateModal: React.FC<PaywallGateModalProps> = ({
   isOpen,
   onActivated,
+  onClose,
+  onLogout,
+  isCompulsory = false,
   purchaseUrl = 'https://rzp.io/rzp/eBLEV0w',
+  telegramAccount,
 }) => {
   const scrollContainerRef = useRef<HTMLDivElement>(null);
   const { theme } = useTheme();
@@ -115,6 +134,8 @@ export const PaywallGateModal: React.FC<PaywallGateModalProps> = ({
   const [checkoutLoading, setCheckoutLoading] = useState(false);
   const [trialLoading, setTrialLoading] = useState(false);
   const [formError, setFormError] = useState<string | null>(null);
+  const [waitingSessionId, setWaitingSessionId] = useState<string | null>(null);
+  const [isWaitingPayment, setIsWaitingPayment] = useState(false);
 
   // Fetch live store settings & active offers dynamically from cloud worker
   const refreshStoreData = useCallback(async () => {
@@ -170,16 +191,54 @@ export const PaywallGateModal: React.FC<PaywallGateModalProps> = ({
   }, []);
 
   useEffect(() => {
+    if (telegramAccount) {
+      if (!customerName.trim()) {
+        const full = [telegramAccount.firstName, telegramAccount.lastName].filter(Boolean).join(' ').trim();
+        if (full) setCustomerName(full);
+      }
+    }
+  }, [telegramAccount]);
+
+  useEffect(() => {
     if (!isOpen) return;
     void refreshStoreData();
 
-    // Re-sync store data when user switches back to this window/app
+    const verifyTelegramSync = async () => {
+      if (telegramAccount?.userId || telegramAccount?.phoneNumber) {
+        try {
+          const check = await licenseManager.checkTelegramAccount(telegramAccount.userId, telegramAccount.phoneNumber);
+          if (check.isLicensed && check.license) {
+            setSuccessMessage('Telegram Pro activated for your account!');
+            setTimeout(() => {
+              onActivated(check.license!);
+            }, 600);
+          }
+        } catch {
+          // Ignore network errors
+        }
+      }
+    };
+
+    // 1. Initial check immediately on modal open
+    void verifyTelegramSync();
+
+    // 2. Active 3-second sync poll while paywall is visible (unlocks instantly when payment is completed)
+    const syncInterval = setInterval(() => {
+      void verifyTelegramSync();
+    }, 3000);
+
+    // 3. Re-sync store data and check Telegram account on window focus
     const handleFocus = () => {
       void refreshStoreData();
+      void verifyTelegramSync();
     };
+
     window.addEventListener('focus', handleFocus);
-    return () => window.removeEventListener('focus', handleFocus);
-  }, [isOpen, refreshStoreData]);
+    return () => {
+      clearInterval(syncInterval);
+      window.removeEventListener('focus', handleFocus);
+    };
+  }, [isOpen, refreshStoreData, telegramAccount, onActivated]);
 
   // Real-time ticking countdown for flash deals
   useEffect(() => {
@@ -242,7 +301,13 @@ export const PaywallGateModal: React.FC<PaywallGateModalProps> = ({
     setSuccessMessage(null);
 
     try {
-      const result = await licenseManager.activateLicense(keyInput.trim());
+      const result = await licenseManager.activateLicense(
+        keyInput.trim(),
+        undefined,
+        undefined,
+        telegramAccount?.userId,
+        telegramAccount?.phoneNumber
+      );
       if (result.success && result.license) {
         setSuccessMessage('License verified & activated successfully! Welcome to TG Drive Pro.');
         setTimeout(() => {
@@ -386,28 +451,76 @@ export const PaywallGateModal: React.FC<PaywallGateModalProps> = ({
           email: cleanEmail,
           coupon_code: appliedCoupon?.code || activeOffer?.coupon_code || '',
           referral_code: appliedCoupon?.code || '',
+          telegram_user_id: telegramAccount?.userId ? String(telegramAccount.userId) : '',
+          phone_number: telegramAccount?.phoneNumber || '',
         }),
       });
 
-      const data = (await res.json()) as { success?: boolean; payment_url?: string; error?: string };
+      const data = (await res.json()) as { success?: boolean; payment_url?: string; order_id?: string; session_id?: string; error?: string };
 
       if (res.ok && data.payment_url) {
+        if (data.session_id || data.order_id) {
+          setWaitingSessionId(data.session_id || data.order_id || null);
+          setIsWaitingPayment(true);
+        }
         void openExternalUrl(data.payment_url);
       } else {
         const targetUrl = storeConfig?.buy_url || purchaseUrl;
         const separator = targetUrl.includes('?') ? '&' : '?';
-        const urlWithPrefill = `${targetUrl}${separator}prefill[name]=${encodeURIComponent(cleanName)}&prefill[email]=${encodeURIComponent(cleanEmail)}`;
+        const phoneParam = telegramAccount?.phoneNumber ? `&prefill[contact]=${encodeURIComponent(telegramAccount.phoneNumber)}` : '';
+        const urlWithPrefill = `${targetUrl}${separator}prefill[name]=${encodeURIComponent(cleanName)}&prefill[email]=${encodeURIComponent(cleanEmail)}${phoneParam}`;
+        setIsWaitingPayment(true);
         void openExternalUrl(urlWithPrefill);
       }
     } catch {
       const targetUrl = storeConfig?.buy_url || purchaseUrl;
       const separator = targetUrl.includes('?') ? '&' : '?';
-      const urlWithPrefill = `${targetUrl}${separator}prefill[name]=${encodeURIComponent(cleanName)}&prefill[email]=${encodeURIComponent(cleanEmail)}`;
+      const phoneParam = telegramAccount?.phoneNumber ? `&prefill[contact]=${encodeURIComponent(telegramAccount.phoneNumber)}` : '';
+      const urlWithPrefill = `${targetUrl}${separator}prefill[name]=${encodeURIComponent(cleanName)}&prefill[email]=${encodeURIComponent(cleanEmail)}${phoneParam}`;
+      setIsWaitingPayment(true);
       void openExternalUrl(urlWithPrefill);
     } finally {
       setCheckoutLoading(false);
     }
   };
+
+  // Real-time automatic background polling after launching payment link
+  useEffect(() => {
+    if (!isOpen || !isWaitingPayment) return;
+
+    let cancelled = false;
+    const cleanEmail = customerEmail.trim().toLowerCase();
+    const tgUserId = telegramAccount?.userId ? String(telegramAccount.userId) : undefined;
+    const phone = telegramAccount?.phoneNumber || undefined;
+
+    const interval = window.setInterval(async () => {
+      if (cancelled) return;
+      try {
+        const res = await licenseManager.pollOrderStatus(
+          waitingSessionId || '',
+          cleanEmail,
+          tgUserId,
+          phone
+        );
+
+        if (!cancelled && res.paid && res.license) {
+          cancelled = true;
+          setIsWaitingPayment(false);
+          setSuccessMessage('🎉 Payment Confirmed! Pro License Activated Successfully.');
+          setTimeout(() => {
+            onActivated(res.license!);
+          }, 1200);
+        }
+      } catch {
+        // Continue polling silently
+      }
+    }, 3000);
+
+    return () => {
+      cancelled = true;
+      window.clearInterval(interval);
+    };
+  }, [isOpen, isWaitingPayment, waitingSessionId, customerEmail, telegramAccount, onActivated]);
 
   // Base price computation — always use live admin price as the source of truth
   const basePrice = Math.round(storeConfig?.price !== undefined ? storeConfig.price : 399);
@@ -507,6 +620,21 @@ export const PaywallGateModal: React.FC<PaywallGateModalProps> = ({
           ? 'bg-white/95 border-slate-200 text-slate-900 shadow-slate-300/60'
           : 'bg-slate-950/95 border-cyan-500/25 text-slate-100 shadow-cyan-500/10'
       }`}>
+        {/* Close Button if dismissible */}
+        {!isCompulsory && onClose && (
+          <button
+            type="button"
+            onClick={onClose}
+            className={`absolute top-4 right-4 z-20 p-2 rounded-full transition-all cursor-pointer ${
+              isLight
+                ? 'text-slate-400 hover:text-slate-800 hover:bg-slate-100'
+                : 'text-slate-400 hover:text-white hover:bg-slate-800/80'
+            }`}
+            aria-label="Close"
+          >
+            <X className="h-5 w-5" />
+          </button>
+        )}
         
         {/* Ambient Radial Glow */}
         <div className={`pointer-events-none absolute -top-20 left-1/2 -translate-x-1/2 h-44 w-72 rounded-full blur-3xl ${
@@ -547,6 +675,35 @@ export const PaywallGateModal: React.FC<PaywallGateModalProps> = ({
             Unlock unlimited cloud storage with zero ads, maximum speed and multi-device sync.
           </p>
         </div>
+
+        {/* Telegram Linked Account Banner */}
+        {telegramAccount && (telegramAccount.phoneNumber || telegramAccount.userId) && (
+          <div className={`relative mb-3 flex items-center gap-2.5 rounded-2xl border p-2.5 text-xs shadow-xs animate-fade-in ${
+            isLight
+              ? 'bg-emerald-50/90 border-emerald-200/80 text-emerald-900'
+              : 'bg-emerald-950/40 border-emerald-500/30 text-emerald-200'
+          }`}>
+            <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-xl bg-emerald-500/20 text-emerald-400">
+              <Phone className="h-4 w-4" />
+            </div>
+            <div className="flex-1 min-w-0">
+              <div className="flex items-center justify-between gap-1">
+                <span className="font-bold text-[11px] flex items-center gap-1">
+                  <ShieldCheck className="h-3.5 w-3.5 text-emerald-500" />
+                  Linked Telegram Account
+                </span>
+                {telegramAccount.phoneNumber && (
+                  <span className="font-mono font-extrabold text-[11px] tracking-tight bg-emerald-500/15 px-1.5 py-0.5 rounded text-emerald-600 dark:text-emerald-300">
+                    {telegramAccount.phoneNumber}
+                  </span>
+                )}
+              </div>
+              <p className="text-[10px] opacity-80 mt-0.5 truncate">
+                Purchasing connects Pro directly to your Telegram number on all devices.
+              </p>
+            </div>
+          </div>
+        )}
 
         {/* 2. Segmented Tabs */}
         <div className={`relative mb-3 grid grid-cols-2 rounded-xl p-1 border shadow-inner ${
@@ -1087,6 +1244,33 @@ export const PaywallGateModal: React.FC<PaywallGateModalProps> = ({
                   <span>&rarr;</span>
                 </button>
               </div>
+
+              {!isCompulsory && onClose && (
+                <div className="pt-1">
+                  <button
+                    type="button"
+                    onClick={onClose}
+                    className={`text-[11px] font-medium transition-colors cursor-pointer ${
+                      isLight ? 'text-slate-400 hover:text-slate-600' : 'text-slate-500 hover:text-slate-300'
+                    }`}
+                  >
+                    Continue with Free Version &rarr;
+                  </button>
+                </div>
+              )}
+
+              {onLogout && (
+                <div className="pt-2 border-t border-slate-800/40">
+                  <button
+                    type="button"
+                    onClick={onLogout}
+                    className="text-xs text-slate-400 hover:text-rose-400 transition-colors inline-flex items-center gap-1.5 cursor-pointer font-medium"
+                  >
+                    <LogOut className="h-3.5 w-3.5" />
+                    <span>Need to switch account? Log Out</span>
+                  </button>
+                </div>
+              )}
             </div>
           </div>
           )
@@ -1179,17 +1363,30 @@ export const PaywallGateModal: React.FC<PaywallGateModalProps> = ({
             </button>
 
             {/* Bottom Switcher */}
-            <div className="text-center pt-0.5">
+            <div className="text-center pt-0.5 space-y-2">
               <button
                 type="button"
                 onClick={() => setActiveTab('purchase')}
-                className={`text-xs transition-colors inline-flex items-center gap-1 ${
+                className={`text-xs transition-colors inline-flex items-center gap-1 cursor-pointer ${
                   isLight ? 'text-slate-500 hover:text-cyan-600' : 'text-slate-400 hover:text-cyan-400'
                 }`}
               >
                 <span>Don't have a key?</span>
                 <span className="font-semibold text-cyan-500 underline">Get License &rarr;</span>
               </button>
+
+              {onLogout && (
+                <div className="pt-2 border-t border-slate-800/40">
+                  <button
+                    type="button"
+                    onClick={onLogout}
+                    className="text-xs text-slate-400 hover:text-rose-400 transition-colors inline-flex items-center gap-1.5 cursor-pointer font-medium"
+                  >
+                    <LogOut className="h-3.5 w-3.5" />
+                    <span>Need to switch account? Log Out</span>
+                  </button>
+                </div>
+              )}
             </div>
           </form>
         )}
