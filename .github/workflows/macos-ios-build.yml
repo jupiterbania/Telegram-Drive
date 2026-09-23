@@ -130,7 +130,7 @@ jobs:
       - name: Build iOS target (unsigned IPA archive)
         working-directory: app
         run: |
-          npm run tauri ios build -- --target aarch64-apple-ios --ci || true
+          npm run tauri ios build -- --target aarch64 --ci || true
 
       - name: Prepare iOS artifacts
         working-directory: app

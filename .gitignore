@@ -33,6 +33,8 @@ Error.html
 /app/src-tauri/gen/android/
 *.apk
 *.aab
+*.dmg
+*.ipa
 .gradle/
 local.properties
 *.keystore
