@@ -29,10 +29,10 @@ pub struct AndroidInstallResult {
 
 #[cfg(target_os = "android")]
 const UPDATE_MANIFEST_URL: &str =
-    "https://github.com/caamer20/Telegram-Drive/releases/latest/download/android-update.json";
+    "https://github.com/jupiterbania/Telegram-Drive/releases/latest/download/android-update.json";
 #[cfg(target_os = "android")]
 const UPDATE_SIGNATURE_URL: &str =
-    "https://github.com/caamer20/Telegram-Drive/releases/latest/download/android-update.json.sig";
+    "https://github.com/jupiterbania/Telegram-Drive/releases/latest/download/android-update.json.sig";
 #[cfg(target_os = "android")]
 const UPDATE_PUBLIC_KEY: &str = "untrusted comment: minisign public key: 507B700E3497963C\nRWQ8lpc0DnB7UL08Mw1DO9KFYeMLcdhVwXH40qhGBLJUc5ppbK1XHM2J\n";
 #[cfg(target_os = "android")]
