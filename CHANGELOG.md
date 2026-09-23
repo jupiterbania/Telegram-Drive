@@ -1,3 +1,11 @@
+## [1.2.0] - 2026-09-23
+
+### Features & Enhancements
+- Updated branding and in-app icons across all mobile, desktop, and documentation platforms.
+- Highly optimized small-size Android Release APK build (ARM64-v8a).
+- Universal and platform-optimized builds for Windows, macOS (Apple Silicon & Intel), and Android.
+- Streamlined bundle sizes, i18n synchronization, and memory-efficient transfer engine.
+
 ## [1.0.54] - 2026-09-10
 
 ### Features & Enhancements

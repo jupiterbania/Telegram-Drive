@@ -214,10 +214,10 @@ jobs:
         run: |
           const serviceUrl = process.env.TELEGRAM_DRIVE_SUPPORTER_SERVICE_URL || '';
           const publicKey = process.env.TELEGRAM_DRIVE_SUPPORTER_PUBLIC_KEY || '';
-          if (!serviceUrl.startsWith('https://') || serviceUrl.endsWith('/')) {
+          if (serviceUrl && (!serviceUrl.startsWith('https://') || serviceUrl.endsWith('/'))) {
             throw new Error('Set SUPPORTER_SERVICE_URL to the deployed HTTPS origin without a trailing slash.');
           }
-          if (!/^[A-Za-z0-9_-]{43}$/.test(publicKey)) {
+          if (publicKey && !/^[A-Za-z0-9_-]{43}$/.test(publicKey)) {
             throw new Error('Set SUPPORTER_PUBLIC_KEY to the 32-byte Ed25519 public key in unpadded base64url form.');
           }
 
@@ -232,13 +232,13 @@ jobs:
           KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
         run: |
           const fs = require('fs');
-          const key = process.env.KEY.trim();
-          // Tauri expects TAURI_SIGNING_PRIVATE_KEY to be base64-encoded.
-          // If the secret is raw key text, base64-encode it; otherwise pass through.
-          const b64 = key.startsWith('untrusted comment:')
-            ? Buffer.from(key).toString('base64')
-            : key;
-          fs.appendFileSync(process.env.GITHUB_ENV, `TAURI_SIGNING_PRIVATE_KEY=${b64}\n`);
+          const key = (process.env.KEY || '').trim();
+          if (key) {
+            const b64 = key.startsWith('untrusted comment:')
+              ? Buffer.from(key).toString('base64')
+              : key;
+            fs.appendFileSync(process.env.GITHUB_ENV, `TAURI_SIGNING_PRIVATE_KEY=${b64}\n`);
+          }
 
       - name: Build the app
         uses: tauri-apps/tauri-action@84b9d35b5fc46c1e45415bdb6144030364f7ebc5 # v0
