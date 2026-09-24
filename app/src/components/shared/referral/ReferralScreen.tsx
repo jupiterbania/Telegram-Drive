@@ -18,64 +18,89 @@ import { QRCodeSVG } from 'qrcode.react';
 import { useTheme } from '../../../context/ThemeContext';
 import type { ReferralProfile, ReferralSettings } from '../../../hooks/useReferralProgram';
 
+const defaultReferralSettings: ReferralSettings = {
+  min_payout: 100,
+  reward_type: 'flat',
+  reward_value: 50,
+  friend_discount_type: 'percent',
+  friend_discount_value: 10,
+};
+
 export interface ReferralScreenProps {
-  onNavigateToEarnings: () => void;
-  userEmail: string;
-  userName: string;
-  setUserEmail: (email: string) => void;
-  setUserName: (name: string) => void;
-  profile: ReferralProfile | null;
-  settings: ReferralSettings;
-  copiedCode: boolean;
-  copiedLink: boolean;
-  referralCode: string;
-  shareLink: string;
-  copyCode: () => Promise<void>;
-  copyShareLink: () => Promise<void>;
-  copyPitchMessage: () => Promise<void>;
-  shareWhatsApp: () => void;
-  shareTelegram: () => void;
-  shareTwitter: () => void;
-  fetchProfile: (email?: string, name?: string) => Promise<void>;
+  onClose?: () => void;
+  onNavigateToEarnings?: () => void;
+  userEmail?: string;
+  defaultEmail?: string;
+  userName?: string;
+  defaultName?: string;
+  setUserEmail?: (email: string) => void;
+  setUserName?: (name: string) => void;
+  profile?: ReferralProfile | null;
+  settings?: ReferralSettings;
+  copiedCode?: boolean;
+  copiedLink?: boolean;
+  referralCode?: string;
+  shareLink?: string;
+  copyCode?: () => Promise<void>;
+  copyShareLink?: () => Promise<void>;
+  copyPitchMessage?: () => Promise<void>;
+  shareWhatsApp?: () => void;
+  shareTelegram?: () => void;
+  shareTwitter?: () => void;
+  fetchProfile?: (email?: string, name?: string) => Promise<void>;
 }
 
 export const ReferralScreen: React.FC<ReferralScreenProps> = ({
   onNavigateToEarnings,
   userEmail,
+  defaultEmail,
   userName,
+  defaultName,
   setUserEmail,
   setUserName,
   profile,
-  settings,
-  copiedCode,
-  copiedLink,
-  referralCode,
-  shareLink,
-  copyCode,
-  copyShareLink,
-  copyPitchMessage,
-  shareWhatsApp,
-  shareTelegram,
-  shareTwitter,
-  fetchProfile,
+  settings = defaultReferralSettings,
+  copiedCode = false,
+  copiedLink = false,
+  referralCode = '',
+  shareLink = '',
+  copyCode = async () => {},
+  copyShareLink = async () => {},
+  copyPitchMessage = async () => {},
+  shareWhatsApp = () => {},
+  shareTelegram = () => {},
+  shareTwitter = () => {},
+  fetchProfile = async () => {},
 }) => {
   const { theme } = useTheme();
   const isLight = theme === 'light';
 
-  const [isEditingEmail, setIsEditingEmail] = useState(!userEmail);
-  const [emailInput, setEmailInput] = useState(userEmail);
-  const [nameInput, setNameInput] = useState(userName);
+  const activeEmail = userEmail || defaultEmail || '';
+  const activeName = userName || defaultName || '';
+  const activeReferralCode = referralCode || (profile?.referral_code ?? 'TG-PRO');
+  const activeShareLink = shareLink || `https://tgdrive.app/?ref=${activeReferralCode}`;
+
+  const [isEditingEmail, setIsEditingEmail] = useState(!activeEmail);
+  const [emailInput, setEmailInput] = useState(activeEmail);
+  const [nameInput, setNameInput] = useState(activeName);
   const [showQrCode, setShowQrCode] = useState(false);
   const [expandedFaq, setExpandedFaq] = useState<number | null>(null);
 
   const handleSaveEmail = (e: React.FormEvent) => {
     e.preventDefault();
     if (emailInput && emailInput.includes('@')) {
-      setUserEmail(emailInput);
-      setUserName(nameInput);
+      setUserEmail?.(emailInput);
+      setUserName?.(nameInput);
       setIsEditingEmail(false);
       void fetchProfile(emailInput, nameInput);
     }
+  };
+
+  const safeSettings = settings || {
+    reward_value: 50,
+    friend_discount_percent: 10,
+    min_payout: 100,
+    enabled: true,
   };
 
   const conversionRate =
@@ -90,15 +115,15 @@ export const ReferralScreen: React.FC<ReferralScreenProps> = ({
     },
     {
       q: 'How much money do I earn per referral?',
-      a: `You earn a flat ₹${settings.reward_value} real cash every time someone purchases TG Drive Lifetime Pro using your referral code. There are no limits or caps!`,
+      a: `You earn a flat ₹${safeSettings.reward_value} real cash every time someone purchases TG Drive Lifetime Pro using your referral code. There are no limits or caps!`,
     },
     {
       q: 'When does the money reflect in my wallet?',
-      a: `Instantly! As soon as your friend completes checkout with your code, ₹${settings.reward_value} is automatically credited to your referral wallet balance.`,
+      a: `Instantly! As soon as your friend completes checkout with your code, ₹${safeSettings.reward_value} is automatically credited to your referral wallet balance.`,
     },
     {
       q: 'How and when can I withdraw my earnings?',
-      a: `You can request a withdrawal once your balance reaches ₹${settings.min_payout}. Payouts are transferred directly to your UPI ID (GPay / PhonePe / Paytm / BHIM) or Bank Account within 12-24 hours.`,
+      a: `You can request a withdrawal once your balance reaches ₹${safeSettings.min_payout}. Payouts are transferred directly to your UPI ID (GPay / PhonePe / Paytm / BHIM) or Bank Account within 12-24 hours.`,
     },
   ];
 
@@ -169,8 +194,8 @@ export const ReferralScreen: React.FC<ReferralScreenProps> = ({
           <button
             type="button"
             onClick={() => {
-              setEmailInput(userEmail);
-              setNameInput(userName);
+              setEmailInput(activeEmail);
+              setNameInput(activeName);
               setIsEditingEmail(true);
             }}
             className="text-[11px] font-bold text-cyan-400 hover:underline shrink-0 ml-3 cursor-pointer"
@@ -270,7 +295,7 @@ export const ReferralScreen: React.FC<ReferralScreenProps> = ({
               <span className="text-[10px] font-sans font-bold text-slate-400 block tracking-normal uppercase">
                 Referral Code:
               </span>
-              <span className="truncate">{referralCode}</span>
+              <span className="truncate">{activeReferralCode}</span>
             </div>
             <button
               type="button"
@@ -296,7 +321,7 @@ export const ReferralScreen: React.FC<ReferralScreenProps> = ({
               <span>{copiedLink ? 'Link Copied!' : 'Copy Invite Link'}</span>
             </div>
             <span className="text-[10px] text-slate-400 truncate max-w-full font-mono">
-              {shareLink.replace('https://', '')}
+              {activeShareLink.replace('https://', '')}
             </span>
           </button>
         </div>

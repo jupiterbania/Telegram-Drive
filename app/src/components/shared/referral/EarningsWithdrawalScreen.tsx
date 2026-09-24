@@ -14,6 +14,7 @@ import {
   Receipt,
   ShieldCheck,
   Smartphone,
+  ArrowLeft,
 } from 'lucide-react';
 import { useTheme } from '../../../context/ThemeContext';
 import { toast } from 'sonner';
@@ -24,41 +25,58 @@ import type {
   RequestPayoutParams,
 } from '../../../hooks/useReferralProgram';
 
+const defaultReferralSettings: ReferralSettings = {
+  min_payout: 100,
+  reward_type: 'flat',
+  reward_value: 50,
+  friend_discount_type: 'percent',
+  friend_discount_value: 10,
+};
+
 export interface EarningsWithdrawalScreenProps {
+  onClose?: () => void;
   onNavigateToReferral?: () => void;
-  userEmail: string;
-  userName: string;
-  setUserEmail: (email: string) => void;
-  setUserName: (name: string) => void;
-  profile: ReferralProfile | null;
-  payouts: PayoutRequest[];
-  settings: ReferralSettings;
-  loading: boolean;
-  submittingPayout: boolean;
-  fetchProfile: (email?: string, name?: string) => Promise<void>;
-  submitPayoutRequest: (params: RequestPayoutParams) => Promise<{ success: boolean; message?: string; error?: string }>;
+  userEmail?: string;
+  defaultEmail?: string;
+  userName?: string;
+  defaultName?: string;
+  setUserEmail?: (email: string) => void;
+  setUserName?: (name: string) => void;
+  profile?: ReferralProfile | null;
+  payouts?: PayoutRequest[];
+  settings?: ReferralSettings;
+  loading?: boolean;
+  submittingPayout?: boolean;
+  fetchProfile?: (email?: string, name?: string) => Promise<void>;
+  submitPayoutRequest?: (params: RequestPayoutParams) => Promise<{ success: boolean; message?: string; error?: string }>;
 }
 
 export const EarningsWithdrawalScreen: React.FC<EarningsWithdrawalScreenProps> = ({
+  onNavigateToReferral,
   userEmail,
+  defaultEmail,
   userName,
+  defaultName,
   setUserEmail,
   setUserName,
   profile,
-  payouts,
-  settings,
-  loading,
-  submittingPayout,
-  fetchProfile,
-  submitPayoutRequest,
+  payouts = [],
+  settings = defaultReferralSettings,
+  loading = false,
+  submittingPayout = false,
+  fetchProfile = async () => {},
+  submitPayoutRequest = async () => ({ success: false, error: 'Payout failed' }),
 }) => {
   const { theme } = useTheme();
   const isLight = theme === 'light';
 
+  const activeEmail = userEmail || defaultEmail || '';
+  const activeName = userName || defaultName || '';
+
   // Email form state if not loaded
-  const [isEditingEmail, setIsEditingEmail] = useState(!userEmail);
-  const [emailInput, setEmailInput] = useState(userEmail);
-  const [nameInput, setNameInput] = useState(userName);
+  const [isEditingEmail, setIsEditingEmail] = useState(!activeEmail);
+  const [emailInput, setEmailInput] = useState(activeEmail);
+  const [nameInput, setNameInput] = useState(activeName);
 
   // Withdrawal form state
   const [withdrawAmount, setWithdrawAmount] = useState<string>('');
@@ -98,8 +116,8 @@ export const EarningsWithdrawalScreen: React.FC<EarningsWithdrawalScreenProps> =
   const handleSaveEmail = (e: React.FormEvent) => {
     e.preventDefault();
     if (emailInput && emailInput.includes('@')) {
-      setUserEmail(emailInput);
-      setUserName(nameInput);
+      setUserEmail?.(emailInput);
+      setUserName?.(nameInput);
       setIsEditingEmail(false);
       void fetchProfile(emailInput, nameInput);
     }
@@ -170,18 +188,39 @@ export const EarningsWithdrawalScreen: React.FC<EarningsWithdrawalScreenProps> =
     }
   };
 
-  const filteredPayouts = payouts.filter((p) => {
+  const safePayouts = payouts || [];
+  const safeSettings = settings || {
+    reward_value: 50,
+    friend_discount_percent: 10,
+    min_payout: 100,
+    enabled: true,
+  };
+
+  const filteredPayouts = safePayouts.filter((p) => {
     if (historyFilter === 'all') return true;
     return p.status === historyFilter;
   });
 
   const walletBalance = profile?.wallet_balance || 0;
-  const isBalanceEligible = walletBalance >= settings.min_payout;
+  const isBalanceEligible = walletBalance >= safeSettings.min_payout;
 
   return (
     <div className="space-y-4 sm:space-y-5">
+      {onNavigateToReferral && (
+        <button
+          type="button"
+          onClick={onNavigateToReferral}
+          title="Go to Refer & Earn"
+          aria-label="Go to Refer & Earn"
+          className="flex items-center gap-1.5 text-xs font-bold text-slate-400 hover:text-white transition-colors cursor-pointer py-1"
+        >
+          <ArrowLeft className="w-4 h-4" />
+          <span>Go to Refer & Earn</span>
+        </button>
+      )}
+
       {/* ── Account Identity Strip ── */}
-      {!userEmail || isEditingEmail ? (
+      {!activeEmail || isEditingEmail ? (
         <form
           onSubmit={handleSaveEmail}
           className={`p-3.5 sm:p-4 rounded-2xl border space-y-2.5 transition-all shadow-xs ${
@@ -227,13 +266,13 @@ export const EarningsWithdrawalScreen: React.FC<EarningsWithdrawalScreenProps> =
           <div className="flex items-center gap-2 truncate">
             <ShieldCheck className="w-4 h-4 text-cyan-400 shrink-0" />
             <span className="truncate">
-              Wallet Account: <strong className="font-semibold">{userEmail}</strong>
+              Wallet Account: <strong className="font-semibold">{activeEmail}</strong>
             </span>
           </div>
           <div className="flex items-center gap-2.5 shrink-0">
             <button
               type="button"
-              onClick={() => void fetchProfile(userEmail, userName)}
+              onClick={() => void fetchProfile(activeEmail, activeName)}
               disabled={loading}
               className="inline-flex items-center gap-1 text-[11px] font-bold text-cyan-400 hover:underline cursor-pointer disabled:opacity-50"
               title="Refresh Balance"
@@ -244,8 +283,8 @@ export const EarningsWithdrawalScreen: React.FC<EarningsWithdrawalScreenProps> =
             <button
               type="button"
               onClick={() => {
-                setEmailInput(userEmail);
-                setNameInput(userName);
+                setEmailInput(activeEmail);
+                setNameInput(activeName);
                 setIsEditingEmail(true);
               }}
               className="text-[11px] font-bold text-cyan-400 hover:underline cursor-pointer"

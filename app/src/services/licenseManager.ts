@@ -69,12 +69,14 @@ export class LicenseManager {
     if (stored) {
       try {
         const parsed = JSON.parse(stored) as LicenseInfo;
-        // Verify hardware ID matches this device
-        if (parsed.hardwareId === hwid && parsed.isLicensed && parsed.token) {
+        // Verify license is active with either token or valid licenseKey
+        if (parsed.isLicensed && (parsed.token || parsed.licenseKey)) {
           // Check expiration if time-limited
           if (parsed.expiresAt && parsed.expiresAt < Math.floor(Date.now() / 1000)) {
             parsed.isLicensed = false;
             localStorage.setItem(STORAGE_KEY_LICENSE, JSON.stringify(parsed));
+          } else {
+            parsed.hardwareId = hwid;
           }
           this.currentLicense = parsed;
           return parsed;
