@@ -1,15 +1,17 @@
 import { open as openUrl } from '@tauri-apps/plugin-shell';
+import { ADSTERRA_CONFIG } from '../config/adsterraConfig';
 
 export type SponsorPlacement =
   | 'first_ad_gateway'
   | 'android_banner'
   | 'desktop_banner_fallback';
 
-export const SPONSOR_URL =
-  'https://www.effectivecpmnetwork.com/nk8qy01t0g?key=a6c132f628973ad13b326e57e4a92f40';
+export const SPONSOR_URL = ADSTERRA_CONFIG.directLinkUrl;
 
 export function sponsorUrlFor(placement: SponsorPlacement): string {
-  return `${SPONSOR_URL}&psid=${encodeURIComponent(placement)}`;
+  const url = ADSTERRA_CONFIG.directLinkUrl;
+  const separator = url.includes('?') ? '&' : '?';
+  return `${url}${separator}psid=${encodeURIComponent(placement)}`;
 }
 
 export function isSafeSponsorDestination(destination: string): boolean {

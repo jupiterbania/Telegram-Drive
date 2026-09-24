@@ -19,8 +19,8 @@ interface AdsterraBannerProps {
 const LEGACY_DISMISSED_AT_KEY = 'adBannerDismissedAt';
 const LEGACY_DISMISSED_KEY = 'adBannerDismissed';
 
-export default function AdsterraBanner(_props: AdsterraBannerProps) {
-  return null;
+export default function AdsterraBanner(props: AdsterraBannerProps) {
+  return <LegacyAdsterraBanner {...props} />;
 }
 
 export function LegacyAdsterraBanner({ visible, onSupport, onManualDismiss }: AdsterraBannerProps) {

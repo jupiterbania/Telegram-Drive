@@ -33,8 +33,8 @@ function clearPersistedDismissal(): void {
   }
 }
 
-export function DesktopAdBanner(_props: DesktopAdBannerProps) {
-  return null;
+export function DesktopAdBanner(props: DesktopAdBannerProps) {
+  return <LegacyDesktopAdBanner {...props} />;
 }
 
 export function LegacyDesktopAdBanner({ suppressed = false, onSupport, onManualDismiss, previewContent }: DesktopAdBannerProps) {
