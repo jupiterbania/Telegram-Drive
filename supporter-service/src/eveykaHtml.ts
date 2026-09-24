@@ -863,10 +863,10 @@ export function renderEveykaHtml(): string {
       <!-- 1. Android Card -->
       <div class="download-card" style="border-color: rgba(16, 185, 129, 0.4); background: linear-gradient(180deg, rgba(16, 185, 129, 0.08) 0%, rgba(13, 18, 32, 0.9) 100%);">
         <div class="download-card-header">
-          <span class="download-card-badge" style="background: rgba(16, 185, 129, 0.2); color: #34d399; border: 1px solid rgba(16, 185, 129, 0.4);">⭐ MOST POPULAR · MOBILE</span>
+          <span class="download-card-badge" style="background: rgba(16, 185, 129, 0.2); color: #34d399; border: 1px solid rgba(16, 185, 129, 0.4);">⭐ ULTRA-COMPACT · ~11.7 MB</span>
           <h3><span style="font-size: 1.8rem;">🤖</span> Android &amp; Android TV</h3>
-          <span class="file-tag" style="background: rgba(16, 185, 129, 0.12); color: #34d399; border: 1px solid rgba(16, 185, 129, 0.3);">Universal APK · Android 8.0+ · ARM64 &amp; x86</span>
-          <p>Lightweight high-speed APK with background camera roll backup, 4K media streaming, TV remote mode, and permanent Telegram account license sync.</p>
+          <span class="file-tag" style="background: rgba(16, 185, 129, 0.12); color: #34d399; border: 1px solid rgba(16, 185, 129, 0.3);">ARM64 &amp; Universal APK · Android 7.0+</span>
+          <p>Lightweight high-speed release APK with background camera roll backup, 4K media streaming, TV remote mode, and permanent Telegram account license sync.</p>
           <ul class="download-feature-list">
             <li><span class="check">✓</span> Direct 100 MB/s Telegram MTProto 2.0 Speed</li>
             <li><span class="check">✓</span> Automated Camera Roll &amp; Gallery Background Sync</li>
@@ -875,11 +875,11 @@ export function renderEveykaHtml(): string {
           </ul>
         </div>
         <div class="download-btn-group">
-          <a href="https://github.com/jupiterbania/Telegram-Drive/releases/latest/download/app-universal-release.apk" target="_blank" class="btn btn-success" style="width: 100%; font-size: 1rem; padding: 14px;">
-            ⬇️ Direct Download APK (Universal)
+          <a href="https://github.com/jupiterbania/Telegram-Drive/releases/download/v1.2.0/TG-Drive-v1.2.0-Android-ARM64.apk" target="_blank" class="btn btn-success" style="width: 100%; font-size: 1rem; padding: 14px;">
+            ⬇️ Download Android APK (~11.7 MB)
           </a>
-          <a href="https://github.com/jupiterbania/Telegram-Drive/releases/latest" target="_blank" class="btn btn-secondary" style="width: 100%; font-size: 0.85rem; padding: 10px;">
-            All Android Release Builds &amp; Mirrors →
+          <a href="https://github.com/jupiterbania/Telegram-Drive/releases/download/v1.2.0/TG-Drive-v1.2.0-Android-Universal.apk" target="_blank" class="btn btn-secondary" style="width: 100%; font-size: 0.85rem; padding: 10px;">
+            ⬇️ Universal APK Mirror (~11.7 MB) →
           </a>
         </div>
       </div>
@@ -889,7 +889,7 @@ export function renderEveykaHtml(): string {
         <div class="download-card-header">
           <span class="download-card-badge" style="background: rgba(0, 210, 255, 0.2); color: var(--accent-cyan); border: 1px solid rgba(0, 210, 255, 0.4);">⭐ MOST POPULAR · DESKTOP</span>
           <h3><span style="font-size: 1.8rem;">🪟</span> Windows PC &amp; Laptop</h3>
-          <span class="file-tag" style="background: rgba(0, 210, 255, 0.12); color: var(--accent-cyan); border: 1px solid rgba(0, 210, 255, 0.3);">64-bit EXE / MSI · Windows 10 &amp; 11</span>
+          <span class="file-tag" style="background: rgba(0, 210, 255, 0.12); color: var(--accent-cyan); border: 1px solid rgba(0, 210, 255, 0.3);">64-bit EXE · Windows 10 &amp; 11</span>
           <p>Native 64-bit Windows desktop app with File Explorer WebDAV network drive mounting, system tray background sync, and instant auto-updater.</p>
           <ul class="download-feature-list">
             <li><span class="check">✓</span> Mount Telegram as Windows Explorer Local Drive Letter</li>
@@ -899,11 +899,11 @@ export function renderEveykaHtml(): string {
           </ul>
         </div>
         <div class="download-btn-group">
-          <a href="https://github.com/jupiterbania/Telegram-Drive/releases/latest/download/Telegram-Drive_x64-setup.exe" target="_blank" class="btn btn-primary" style="width: 100%; font-size: 1rem; padding: 14px;">
-            ⬇️ Direct Download Windows (.exe)
+          <a href="https://github.com/jupiterbania/Telegram-Drive/releases/download/v1.2.0/TG-Drive-v1.2.0-Windows-x64-Setup.exe" target="_blank" class="btn btn-primary" style="width: 100%; font-size: 1rem; padding: 14px;">
+            ⬇️ Download Windows Installer (~26.9 MB)
           </a>
-          <a href="https://github.com/jupiterbania/Telegram-Drive/releases/latest" target="_blank" class="btn btn-secondary" style="width: 100%; font-size: 0.85rem; padding: 10px;">
-            Download MSI / Portable ZIP →
+          <a href="https://github.com/jupiterbania/Telegram-Drive/releases/download/v1.2.0/TG-Drive-v1.2.0-Windows-x64-Portable.exe" target="_blank" class="btn btn-secondary" style="width: 100%; font-size: 0.85rem; padding: 10px;">
+            ⬇️ Download Portable EXE (~16.2 MB) →
           </a>
         </div>
       </div>
@@ -924,11 +924,11 @@ export function renderEveykaHtml(): string {
           </ul>
         </div>
         <div class="download-btn-group">
-          <a href="https://github.com/jupiterbania/Telegram-Drive/releases/latest/download/Telegram-Drive_aarch64.dmg" target="_blank" class="btn btn-secondary" style="width: 100%; font-size: 0.84rem; border-color: rgba(139, 92, 246, 0.5);">
-            ⬇️ Apple Silicon (M1/M2/M3/M4)
+          <a href="https://github.com/jupiterbania/Telegram-Drive/releases/download/v1.2.0/TG-Drive-v1.2.0-macOS-Apple-Silicon-ARM64.dmg" target="_blank" class="btn btn-secondary" style="width: 100%; font-size: 0.84rem; border-color: rgba(139, 92, 246, 0.5);">
+            ⬇️ Apple Silicon (M1/M2/M3/M4) (~9.0 MB)
           </a>
-          <a href="https://github.com/jupiterbania/Telegram-Drive/releases/latest/download/Telegram-Drive_x64.dmg" target="_blank" class="btn btn-secondary" style="width: 100%; font-size: 0.84rem;">
-            ⬇️ Intel Mac DMG (x86_64)
+          <a href="https://github.com/jupiterbania/Telegram-Drive/releases/download/v1.2.0/TG-Drive-v1.2.0-macOS-Intel-x64.dmg" target="_blank" class="btn btn-secondary" style="width: 100%; font-size: 0.84rem;">
+            ⬇️ Intel Mac DMG (x86_64) (~9.4 MB)
           </a>
         </div>
       </div>
@@ -938,19 +938,19 @@ export function renderEveykaHtml(): string {
         <div class="download-card-header">
           <span class="download-card-badge" style="background: rgba(0, 210, 255, 0.12); color: var(--accent-cyan); border: 1px solid rgba(0, 210, 255, 0.25);">OPEN LINUX</span>
           <h3><span style="font-size: 1.6rem;">🐧</span> Linux Desktop</h3>
-          <span class="file-tag">DEB · Arch AUR · AppImage</span>
-          <p>Native GTK3 / WebKit2GTK desktop package. Supports Ubuntu, Debian, Linux Mint, Arch Linux (AUR), and Fedora.</p>
+          <span class="file-tag" style="background: rgba(0, 210, 255, 0.12); color: var(--accent-cyan); border: 1px solid rgba(0, 210, 255, 0.25);">AppImage &amp; DEB Package</span>
+          <p>Native GTK3 desktop package. Supports Ubuntu, Debian, Linux Mint, Arch Linux, Fedora, and all modern distributions.</p>
           <ul class="download-feature-list">
+            <li><span class="check">✓</span> Universal AppImage Standalone</li>
             <li><span class="check">✓</span> Official Debian / Ubuntu (.deb)</li>
-            <li><span class="check">✓</span> Arch Linux PKGBUILD &amp; CLI Mode</li>
           </ul>
         </div>
         <div class="download-btn-group">
-          <a href="https://github.com/jupiterbania/Telegram-Drive/releases/latest/download/Telegram.Drive_amd64.deb" target="_blank" class="btn btn-secondary" style="width: 100%; font-size: 0.84rem;">
-            ⬇️ Download Debian / Ubuntu (.deb)
+          <a href="https://github.com/jupiterbania/Telegram-Drive/releases/download/v1.2.0/TG-Drive-v1.2.0-Linux-x64.AppImage" target="_blank" class="btn btn-secondary" style="width: 100%; font-size: 0.84rem;">
+            ⬇️ Download AppImage (~87.1 MB)
           </a>
-          <a href="https://github.com/jupiterbania/Telegram-Drive/releases/latest" target="_blank" class="btn btn-secondary" style="width: 100%; font-size: 0.82rem;">
-            Arch PKGBUILD &amp; Releases →
+          <a href="https://github.com/jupiterbania/Telegram-Drive/releases/download/v1.2.0/TG-Drive-v1.2.0-Linux-x64.deb" target="_blank" class="btn btn-secondary" style="width: 100%; font-size: 0.84rem;">
+            ⬇️ Download Debian / Ubuntu .deb (~9.9 MB)
           </a>
         </div>
       </div>
@@ -960,19 +960,19 @@ export function renderEveykaHtml(): string {
         <div class="download-card-header">
           <span class="download-card-badge" style="background: rgba(245, 158, 11, 0.15); color: #fbbf24; border: 1px solid rgba(245, 158, 11, 0.3);">MOBILE &amp; TABLET</span>
           <h3><span style="font-size: 1.6rem;">📱</span> Apple iOS &amp; iPadOS</h3>
-          <span class="file-tag" style="background: rgba(245, 158, 11, 0.12); color: #fbbf24; border: 1px solid rgba(245, 158, 11, 0.3);">Safari PWA &amp; WebDAV</span>
-          <p>Run TG Drive directly on iPhone &amp; iPad with Safari "Add to Home Screen" PWA mode or mount via native iOS Files app WebDAV.</p>
+          <span class="file-tag" style="background: rgba(245, 158, 11, 0.12); color: #fbbf24; border: 1px solid rgba(245, 158, 11, 0.3);">IPA Package &amp; Simulator</span>
+          <p>Direct sideload package for iPhone &amp; iPad (AltStore, SideStore, TrollStore, Scarlet, Sideloadly) and Xcode Simulator bundle.</p>
           <ul class="download-feature-list">
-            <li><span class="check">✓</span> Safari Fullscreen PWA Mode</li>
-            <li><span class="check">✓</span> Native iOS Files App Mount</li>
+            <li><span class="check">✓</span> Sideload Direct Install IPA</li>
+            <li><span class="check">✓</span> Fullscreen PWA &amp; WebDAV Files Mount</li>
           </ul>
         </div>
         <div class="download-btn-group">
-          <a href="#" onclick="alert('iOS / iPadOS Setup Guide:\n\n1. Open TG Drive in Safari.\n2. Tap the Share button in Safari toolbar.\n3. Tap \'Add to Home Screen\' to install as a full-screen app!\n4. For Files app integration, enable WebDAV in TG Drive Desktop/Server settings.'); return false;" class="btn btn-amber" style="width: 100%; font-size: 0.86rem;">
-            📱 iOS &amp; Safari PWA Guide
+          <a href="https://github.com/jupiterbania/Telegram-Drive/releases/download/v1.2.0/TG-Drive-v1.2.0-iOS-Direct-Install.ipa" target="_blank" class="btn btn-amber" style="width: 100%; font-size: 0.86rem;">
+            ⬇️ Download iOS IPA Package
           </a>
-          <a href="#pricing" class="btn btn-secondary" style="width: 100%; font-size: 0.82rem;">
-            ⚡ Get Pro License Key
+          <a href="https://github.com/jupiterbania/Telegram-Drive/releases/download/v1.2.0/TG-Drive-v1.2.0-iOS-Simulator-App.zip" target="_blank" class="btn btn-secondary" style="width: 100%; font-size: 0.82rem;">
+            ⬇️ Xcode Simulator App (.zip) →
           </a>
         </div>
       </div>
