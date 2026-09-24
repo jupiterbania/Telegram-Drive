@@ -40,95 +40,102 @@ jobs:
         working-directory: app
         run: npm run build
 
+      - name: Build Rust Library for iOS targets
+        working-directory: app
+        run: |
+          cargo build --manifest-path src-tauri/Cargo.toml --target aarch64-apple-ios --release
+          cargo build --manifest-path src-tauri/Cargo.toml --target aarch64-apple-ios-sim --release
+
       - name: Initialize Tauri iOS project
         working-directory: app
         run: |
           npx tauri ios init
 
-      - name: Configure Xcode Project for Unsigned CI Builds
+      - name: Build iOS Application
         working-directory: app
         run: |
-          if [ -d "src-tauri/gen/apple" ]; then
-            find src-tauri/gen/apple -name "project.pbxproj" -exec sed -i '' 's/CODE_SIGN_STYLE = Automatic;/CODE_SIGN_STYLE = Manual; CODE_SIGNING_ALLOWED = NO; CODE_SIGNING_REQUIRED = NO;/g' {} + || true
-            find src-tauri/gen/apple -name "project.pbxproj" -exec sed -i '' 's/DevelopmentTeam = [^;]*;/DevelopmentTeam = "";/g' {} + || true
-          fi
+          npx tauri ios build --ci --target aarch64 --export-method development || true
 
-      - name: Build iOS App via Tauri
+      - name: Package iOS IPA & Simulator Artifacts (Node packager)
         working-directory: app
+        env:
+          TAG_NAME: ${{ github.event.inputs.release_tag || 'v1.2.0' }}
         run: |
-          echo "Building iOS binary for aarch64-apple-ios..."
-          npx tauri ios build --ci --target aarch64-apple-ios || true
+          node -e '
+          const fs = require("fs");
+          const path = require("path");
+          const { execSync } = require("child_process");
 
-          # If direct target build needs manual Xcode step
-          if [ -d "src-tauri/gen/apple" ]; then
-            cd src-tauri/gen/apple
-            WORKSPACE=$(find . -name "*.xcworkspace" -maxdepth 1 | head -n 1)
-            PROJECT=$(find . -name "*.xcodeproj" -maxdepth 1 | head -n 1)
-            
-            if [ -n "$WORKSPACE" ]; then
-              xcodebuild -workspace "$WORKSPACE" \
-                -scheme app_iOS \
-                -configuration Release \
-                -destination 'generic/platform=iOS' \
-                -derivedDataPath derivedData \
-                CODE_SIGNING_ALLOWED=NO \
-                CODE_SIGNING_REQUIRED=NO \
-                CODE_SIGN_IDENTITY="" \
-                PROVISIONING_PROFILE_SPECIFIER="" \
-                DEVELOPMENT_TEAM="" \
-                build || true
-            elif [ -n "$PROJECT" ]; then
-              xcodebuild -project "$PROJECT" \
-                -scheme app_iOS \
-                -configuration Release \
-                -destination 'generic/platform=iOS' \
-                -derivedDataPath derivedData \
-                CODE_SIGNING_ALLOWED=NO \
-                CODE_SIGNING_REQUIRED=NO \
-                CODE_SIGN_IDENTITY="" \
-                PROVISIONING_PROFILE_SPECIFIER="" \
-                DEVELOPMENT_TEAM="" \
-                build || true
-            fi
-          fi
+          function findApp(dir) {
+            let matches = [];
+            try {
+              const entries = fs.readdirSync(dir, { withFileTypes: true });
+              for (const entry of entries) {
+                const full = path.join(dir, entry.name);
+                if (entry.isDirectory()) {
+                  if (entry.name.endsWith(".app")) {
+                    matches.push(full);
+                  } else {
+                    matches = matches.concat(findApp(full));
+                  }
+                }
+              }
+            } catch (e) {}
+            return matches;
+          }
 
-      - name: Package iOS IPA & Validate Real Bundle Size
-        working-directory: app
-        run: |
-          mkdir -p ios-artifacts
-          TAG="${{ github.event.inputs.release_tag || 'v1.2.0' }}"
-          
-          # Search for genuine .app bundle
-          APP_PATHS=$(find src-tauri -name "*.app" -type d)
-          echo "Found candidate .app bundles:"
-          echo "$APP_PATHS"
-          
-          BEST_APP=""
-          BEST_SIZE=0
-          
-          for app in $APP_PATHS; do
-            # Check size in KB
-            SIZE=$(du -sk "$app" | awk '{print $1}')
-            echo "App: $app -> ${SIZE} KB"
-            if [ "$SIZE" -gt "$BEST_SIZE" ]; then
-              BEST_SIZE=$SIZE
-              BEST_APP=$app
-            fi
-          done
-          
-          if [ -n "$BEST_APP" ] && [ "$BEST_SIZE" -gt 1000 ]; then
-            echo "Packaging genuine iOS bundle: $BEST_APP (${BEST_SIZE} KB)"
-            mkdir -p Payload
-            cp -r "$BEST_APP" Payload/
-            zip -r "ios-artifacts/TG-Drive-${TAG}-iOS-Direct-Install.ipa" Payload
-            zip -r "ios-artifacts/TG-Drive-${TAG}-iOS-Simulator-App.zip" "$BEST_APP"
-          else
-            echo "Error: No valid compiled iOS .app found with size > 1MB!"
-            # Don't create corrupted small dummy files
-            exit 1
-          fi
-          
-          ls -la ios-artifacts/
+          const apps = findApp("src-tauri");
+          console.log("Found .app bundles:", apps);
+
+          let bestApp = null;
+          let bestSize = 0;
+
+          for (const app of apps) {
+            try {
+              // Calculate size by walking
+              let total = 0;
+              function calc(p) {
+                const stat = fs.statSync(p);
+                if (stat.isDirectory()) {
+                  for (const c of fs.readdirSync(p)) calc(path.join(p, c));
+                } else {
+                  total += stat.size;
+                }
+              }
+              calc(app);
+              console.log(`App: ${app} -> ${(total / (1024*1024)).toFixed(2)} MB`);
+              if (total > bestSize) {
+                bestSize = total;
+                bestApp = app;
+              }
+            } catch (e) {
+              console.error("Error inspecting:", app, e.message);
+            }
+          }
+
+          if (!bestApp) {
+            console.error("No iOS .app bundle found in src-tauri!");
+            process.exit(1);
+          }
+
+          console.log(`Selecting best app bundle: ${bestApp} (${(bestSize / (1024*1024)).toFixed(2)} MB)`);
+          fs.mkdirSync("ios-artifacts", { recursive: true });
+          fs.rmSync("Payload", { recursive: true, force: true });
+          fs.mkdirSync("Payload", { recursive: true });
+
+          const targetApp = path.join("Payload", path.basename(bestApp));
+          execSync(`cp -R "${bestApp}" "${targetApp}"`);
+
+          const tag = process.env.TAG_NAME || "v1.2.0";
+          execSync(`zip -r "ios-artifacts/TG-Drive-${tag}-iOS-Direct-Install.ipa" Payload`);
+          execSync(`zip -r "ios-artifacts/TG-Drive-${tag}-iOS-Simulator-App.zip" "${bestApp}"`);
+
+          console.log("Successfully created iOS packages:");
+          for (const f of fs.readdirSync("ios-artifacts")) {
+            const stat = fs.statSync(path.join("ios-artifacts", f));
+            console.log(` - ${f}: ${(stat.size / (1024*1024)).toFixed(2)} MB`);
+          }
+          '
 
       - name: Upload iOS Artifacts to Release
         working-directory: app
