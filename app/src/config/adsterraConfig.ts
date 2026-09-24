@@ -19,9 +19,9 @@ export interface AdsterraConfig {
 }
 
 export const ADSTERRA_CONFIG: AdsterraConfig = {
-  // Replace this with your Adsterra Direct Link
-  directLinkUrl: 'https://www.effectivecpmnetwork.com/nk8qy01t0g?key=a6c132f628973ad13b326e57e4a92f40',
-  // Replace this with your Adsterra Banner Key
+  // User's Active Adsterra Smartlink
+  directLinkUrl: 'https://www.profitableratecpmnetwork.com/jjf7657e3m?key=ce5513558127ef2ddb8280919a539411',
+  // Adsterra 300x250 Banner Key
   bannerZoneKey: '9cf449272b7e1c83054b82b7639c6029',
   cooldownMs: 15 * 60 * 1000,
   autoDismissSeconds: 10,

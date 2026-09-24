@@ -13,7 +13,7 @@ import {
 describe('sponsor campaign configuration', () => {
   it('uses the production Adsterra campaign link', () => {
     expect(SPONSOR_URL).toBe(
-      'https://www.effectivecpmnetwork.com/nk8qy01t0g?key=a6c132f628973ad13b326e57e4a92f40',
+      'https://www.profitableratecpmnetwork.com/jjf7657e3m?key=ce5513558127ef2ddb8280919a539411',
     );
   });
 
