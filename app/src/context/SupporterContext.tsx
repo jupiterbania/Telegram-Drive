@@ -187,6 +187,19 @@ export function SupporterProvider({ children }: { children: ReactNode }) {
         };
         setStatus(next);
         return next;
+      } else {
+        const currentLic = await licenseManager.loadLicense();
+        if (!currentLic.isLicensed) {
+          const isExpired = Boolean(currentLic.expiresAt && currentLic.expiresAt < Math.floor(Date.now() / 1000));
+          const next: SupporterStatus = {
+            ...status,
+            state: isExpired ? 'expired' : 'inactive',
+            ad_free: false,
+            message: isExpired ? 'Your trial or license period has expired.' : 'No active license found for this Telegram account.',
+          };
+          setStatus(next);
+          return next;
+        }
       }
     } catch {
       // ignore network errors

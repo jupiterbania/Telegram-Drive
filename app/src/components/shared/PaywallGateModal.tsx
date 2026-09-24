@@ -73,6 +73,7 @@ interface PaywallGateModalProps {
   isCompulsory?: boolean;
   purchaseUrl?: string;
   telegramAccount?: TelegramAccountCheckoutInfo | null;
+  expiredReason?: string | null;
 }
 
 const DEFAULT_PERKS = [
@@ -91,6 +92,7 @@ export const PaywallGateModal: React.FC<PaywallGateModalProps> = ({
   isCompulsory = false,
   purchaseUrl = 'https://rzp.io/rzp/eBLEV0w',
   telegramAccount,
+  expiredReason,
 }) => {
   const scrollContainerRef = useRef<HTMLDivElement>(null);
   const { theme } = useTheme();
@@ -675,6 +677,23 @@ export const PaywallGateModal: React.FC<PaywallGateModalProps> = ({
             Unlock unlimited cloud storage with zero ads, maximum speed and multi-device sync.
           </p>
         </div>
+
+        {/* Expired Plan Alert Notice */}
+        {expiredReason && (
+          <div className="relative mb-3 flex items-center gap-2.5 rounded-2xl border border-amber-500/40 bg-amber-500/10 p-2.5 text-xs text-amber-300 shadow-sm animate-fade-in">
+            <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-xl bg-amber-500/20 text-amber-400">
+              <Clock className="h-4 w-4 animate-pulse" />
+            </div>
+            <div className="flex-1 min-w-0">
+              <span className="font-bold text-[11px] text-amber-400 block">
+                Subscription / Trial Expired
+              </span>
+              <p className="text-[10px] text-amber-200/90 mt-0.5 leading-snug">
+                {expiredReason}
+              </p>
+            </div>
+          </div>
+        )}
 
         {/* Telegram Linked Account Banner */}
         {telegramAccount && (telegramAccount.phoneNumber || telegramAccount.userId) && (

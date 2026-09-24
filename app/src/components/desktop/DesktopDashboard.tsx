@@ -39,7 +39,7 @@ import { DriveConceptTour } from './dashboard/DriveConceptTour';
 import { LazyFeatureBoundary } from '../shared/LazyFeatureBoundary';
 import { SupporterOfferDialog } from '../shared/SupporterOfferDialog';
 import { PaywallGateModal } from '../shared/PaywallGateModal';
-import { licenseManager } from '../../services/licenseManager';
+import { licenseManager, type LicenseInfo } from '../../services/licenseManager';
 import { SyncDashboard } from './sync/SyncDashboard';
 import { Files } from 'lucide-react';
 
@@ -92,15 +92,41 @@ export function Dashboard({ onLogout }: { onLogout: () => void }) {
     const { status: supporterStatus, refreshStatus } = useSupporter();
     const { vaultStatus } = useEncryption();
     const [showProUpgradeModal, setShowProUpgradeModal] = useState(false);
-    useEffect(() => {
-        if (!userProfile || supporterStatus.ad_free) return;
+    const [, setDesktopLicense] = useState<LicenseInfo | null>(null);
+    const [desktopExpiredAlert, setDesktopExpiredAlert] = useState<string | null>(null);
 
-        void licenseManager.checkTelegramAccount(userProfile.id, userProfile.phone).then((res) => {
-            if (!res.isLicensed && !supporterStatus.ad_free) {
+    const loadAndVerifyDesktopLicense = useCallback(async () => {
+        try {
+            const local = await licenseManager.loadLicense();
+            setDesktopLicense(local);
+
+            if (local.expiresAt && local.expiresAt < Math.floor(Date.now() / 1000)) {
+                setDesktopExpiredAlert('Your Free Trial / Subscription has expired. Please purchase a Pro License to continue.');
+                setShowProUpgradeModal(true);
+                return;
+            }
+
+            if (userProfile) {
+                const res = await licenseManager.checkTelegramAccount(userProfile.id, userProfile.phone);
+                if (res.isLicensed && res.license) {
+                    setDesktopLicense(res.license);
+                    setShowProUpgradeModal(false);
+                    setDesktopExpiredAlert(null);
+                    void refreshStatus();
+                } else if (!local.isLicensed && !supporterStatus.ad_free) {
+                    setShowProUpgradeModal(true);
+                }
+            } else if (!local.isLicensed && !supporterStatus.ad_free) {
                 setShowProUpgradeModal(true);
             }
-        });
-    }, [userProfile, supporterStatus.ad_free]);
+        } catch {
+            // ignore
+        }
+    }, [userProfile, refreshStatus, supporterStatus.ad_free]);
+
+    useEffect(() => {
+        void loadAndVerifyDesktopLicense();
+    }, [loadAndVerifyDesktopLicense]);
 
     useEffect(() => {
         if (sessionStorage.getItem('telegram-drive-recovered-session') !== 'true') return;
@@ -1310,6 +1336,7 @@ export function Dashboard({ onLogout }: { onLogout: () => void }) {
                 <PaywallGateModal
                     isOpen={showProUpgradeModal}
                     isCompulsory={true}
+                    expiredReason={desktopExpiredAlert}
                     telegramAccount={{
                         userId: userProfile?.id,
                         phoneNumber: userProfile?.phone,
@@ -1318,8 +1345,10 @@ export function Dashboard({ onLogout }: { onLogout: () => void }) {
                         username: userProfile?.username,
                     }}
                     onLogout={onLogout}
-                    onActivated={async () => {
+                    onActivated={async (lic) => {
+                        setDesktopLicense(lic);
                         setShowProUpgradeModal(false);
+                        setDesktopExpiredAlert(null);
                         await refreshStatus();
                         toast.success('Telegram Drive Pro activated successfully!');
                     }}

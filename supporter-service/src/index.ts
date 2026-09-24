@@ -74,6 +74,7 @@ import type {
   DevicePlatform,
   Env,
   LicenseClaims,
+  LicenseRow,
   RequestOtpRequest,
   SelfResetDeviceRequest,
   VerifyOtpRequest,
@@ -1686,13 +1687,13 @@ export default {
           platform: body.platform || 'windows',
         });
 
-        // Automatically bind Telegram Account to this license if provided
+        // Permanently bind Telegram Account to this license if provided
         if (body.telegram_user_id || body.phone_number) {
           try {
             await env.DB.prepare(`
               UPDATE licenses 
-              SET telegram_user_id = COALESCE(telegram_user_id, ?),
-                  phone_number = COALESCE(phone_number, ?)
+              SET telegram_user_id = COALESCE(?, telegram_user_id),
+                  phone_number = COALESCE(?, phone_number)
               WHERE license_key = ?
             `).bind(
               body.telegram_user_id ? String(body.telegram_user_id).trim() : null,

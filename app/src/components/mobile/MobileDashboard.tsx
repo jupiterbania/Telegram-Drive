@@ -25,7 +25,7 @@ const LazyVaultPassphraseModal = lazy(() => import('./VaultPassphraseModal').the
 import { MobileSupporterCard } from './MobileSupporterCard';
 import { SupporterOfferDialog } from '../shared/SupporterOfferDialog';
 import { PaywallGateModal } from '../shared/PaywallGateModal';
-import { licenseManager } from '../../services/licenseManager';
+import { licenseManager, type LicenseInfo } from '../../services/licenseManager';
 import { usePlatform } from '../../hooks/usePlatform';
 import { useTelegramConnection } from '../../hooks/useTelegramConnection';
 import { useFileUpload } from '../../hooks/useFileUpload';
@@ -47,6 +47,8 @@ import { TelegramFile, TelegramFolder, BandwidthStats } from '../../types';
 import { useSettings } from '../../context/SettingsContext';
 import { useSupporter } from '../../context/SupporterContext';
 import { version as appVersion } from '../../../package.json';
+import { useUpdateCheck } from '../../hooks/useUpdateCheck';
+import { RELEASES_URL } from '../../services/installationInfo';
 import { LANGUAGES } from '../../i18n/languages';
 import { useTranslation } from 'react-i18next';
 import { useConfirm } from '../../context/ConfirmContext';
@@ -112,7 +114,10 @@ type SettingsSubpage =
   | 'diagnostics'
   | 'proxy'
   | 'media'
-  | 'supporter';
+  | 'supporter'
+  | 'updates'
+  | 'account'
+  | 'pro_plans';
 
 function SettingsMenuCard({
   icon: Icon,
@@ -260,6 +265,26 @@ export default function MobileDashboard({ onLogout }: { onLogout?: () => void })
   const [showHelp, setShowHelp] = useState(false);
   const [supporterOfferTrigger, setSupporterOfferTrigger] = useState<SupporterPromptTrigger | null>(null);
   const [showProUpgradeModal, setShowProUpgradeModal] = useState(false);
+  const [mobileLicense, setMobileLicense] = useState<LicenseInfo | null>(null);
+  const [isLicenseSyncing, setIsLicenseSyncing] = useState(false);
+  const [showManualKeyModal, setShowManualKeyModal] = useState(false);
+  const [manualLicenseKey, setManualLicenseKey] = useState('');
+  const [isActivatingManualKey, setIsActivatingManualKey] = useState(false);
+  const [expiredAlertText, setExpiredAlertText] = useState<string | null>(null);
+
+  // ── Software Updates Hook ─────────────────────────────────────────────
+  const {
+    checking: updateChecking,
+    available: updateAvailable,
+    downloading: updateDownloading,
+    progress: updateProgress,
+    error: updateError,
+    version: updateVersion,
+    phase: updatePhase,
+    managedByPackageManager: updateManagedByPkg,
+    checkForUpdates,
+    downloadAndInstall: downloadAndInstallUpdate,
+  } = useUpdateCheck();
 
   // ── Proxy Setup Guide ────────────────────────────────────────────────
   const [showProxyGuide, setShowProxyGuide] = useState(false);
@@ -432,15 +457,100 @@ export default function MobileDashboard({ onLogout }: { onLogout?: () => void })
     handleFolderRename, handleFolderToggleVisibility, handleExportFolderInvite
   } = useTelegramConnection(logoutHandler);
 
-  useEffect(() => {
-    if (!userProfile || supporterStatus.ad_free) return;
+  // Initial load and Telegram account license verification
+  const loadAndVerifyLicense = useCallback(async () => {
+    try {
+      const local = await licenseManager.loadLicense();
+      setMobileLicense(local);
 
-    void licenseManager.checkTelegramAccount(userProfile.id, userProfile.phone).then((res) => {
-      if (!res.isLicensed && !supporterStatus.ad_free) {
+      if (local.expiresAt && local.expiresAt < Math.floor(Date.now() / 1000)) {
+        setExpiredAlertText('Your Free Trial / Subscription has expired. Please purchase a Pro License to continue.');
+        setShowProUpgradeModal(true);
+        return;
+      }
+
+      if (userProfile) {
+        const res = await licenseManager.checkTelegramAccount(userProfile.id, userProfile.phone);
+        if (res.isLicensed && res.license) {
+          setMobileLicense(res.license);
+          setShowProUpgradeModal(false);
+          setExpiredAlertText(null);
+          void refreshStatus();
+        } else {
+          if (!local.isLicensed && !supporterStatus.ad_free) {
+            setShowProUpgradeModal(true);
+          }
+        }
+      } else if (!local.isLicensed && !supporterStatus.ad_free) {
         setShowProUpgradeModal(true);
       }
-    });
-  }, [userProfile, supporterStatus.ad_free]);
+    } catch {
+      // ignore
+    }
+  }, [userProfile, refreshStatus, supporterStatus.ad_free]);
+
+  useEffect(() => {
+    void loadAndVerifyLicense();
+  }, [loadAndVerifyLicense]);
+
+  const handleSyncMobileLicense = async () => {
+    setIsLicenseSyncing(true);
+    try {
+      if (userProfile) {
+        const res = await licenseManager.checkTelegramAccount(userProfile.id, userProfile.phone);
+        if (res.isLicensed && res.license) {
+          setMobileLicense(res.license);
+          setShowProUpgradeModal(false);
+          setExpiredAlertText(null);
+          await refreshStatus();
+          toast.success('Pro License synced & active for your Telegram account!');
+          return;
+        }
+      }
+      const verified = await licenseManager.verifyLicense();
+      const updated = await licenseManager.loadLicense();
+      setMobileLicense(updated);
+      if (verified && updated.isLicensed) {
+        toast.success('Pro license is active on this device!');
+      } else {
+        toast.info('No active license found for this Telegram account.');
+      }
+    } catch {
+      toast.error('Unable to connect to license server.');
+    } finally {
+      setIsLicenseSyncing(false);
+    }
+  };
+
+  const handleActivateMobileKey = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!manualLicenseKey.trim()) return;
+    setIsActivatingManualKey(true);
+    try {
+      const res = await licenseManager.activateLicense(
+        manualLicenseKey.trim(),
+        undefined,
+        isAndroid ? 'android' : 'mobile',
+        userProfile?.id,
+        userProfile?.phone
+      );
+      if (res.success && res.license) {
+        setMobileLicense(res.license);
+        setShowManualKeyModal(false);
+        setManualLicenseKey('');
+        setShowProUpgradeModal(false);
+        setExpiredAlertText(null);
+        await refreshStatus();
+        toast.success('License activated & synced with your Telegram account!');
+      } else {
+        toast.error(res.message || 'Invalid license key.');
+      }
+    } catch {
+      toast.error('Activation failed.');
+    } finally {
+      setIsActivatingManualKey(false);
+    }
+  };
 
   const [showProfileDetailsModal, setShowProfileDetailsModal] = useState(false);
 
@@ -1265,7 +1375,6 @@ export default function MobileDashboard({ onLogout }: { onLogout?: () => void })
       }
       return [...prev, { tab: activeTab, settingsSubpage, filesSelectedFolderId, activeFolderId }].slice(-30);
     });
-    setActiveTab('settings');
     setSettingsSubpage(subpage);
   }, [activeTab, settingsSubpage, filesSelectedFolderId, activeFolderId]);
 
@@ -2360,73 +2469,94 @@ export default function MobileDashboard({ onLogout }: { onLogout?: () => void })
               )}
             </div>
           </div>
-        ) : activeTab === 'settings' ? (
-          /* 4. Settings Tab Header */
-          settingsSubpage !== null ? (
-            /* Settings Subpage Header */
-            <div className="flex items-center justify-between w-full gap-2">
-              <div className="flex items-center gap-2 min-w-0 flex-1">
-                <button
-                  type="button"
-                  onClick={() => handleBack()}
-                  className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-xl bg-telegram-hover/40 hover:bg-telegram-hover/70 active:scale-95 border border-telegram-border/40 text-telegram-primary text-xs font-semibold transition shrink-0 cursor-pointer"
-                  aria-label="Back"
-                >
-                  <ChevronLeft className="w-4 h-4" />
-                  <span>{getBackLabel()}</span>
-                </button>
-                <div className="min-w-0">
-                  <h1 className="text-sm font-bold text-telegram-text tracking-tight leading-tight truncate">
-                    {settingsSubpage === 'vault' && 'Cloud Vault & Encryption'}
-                    {settingsSubpage === 'preferences' && t('common.preferences')}
-                    {settingsSubpage === 'autobackup' && 'Auto-Backup & Sync'}
-                    {settingsSubpage === 'security' && 'Device Privacy & App Lock'}
-                    {settingsSubpage === 'transfers' && 'Transfer Reliability'}
-                    {settingsSubpage === 'storage' && t('settings.offline_cache')}
-                    {settingsSubpage === 'diagnostics' && t('settings.connection_diagnostics')}
-                    {settingsSubpage === 'proxy' && t('common.proxy')}
-                    {settingsSubpage === 'media' && 'Media & Playback'}
-                    {settingsSubpage === 'supporter' && 'Privacy & Supporter'}
-                  </h1>
-                </div>
-              </div>
-              <div className="flex items-center gap-1.5 shrink-0">
-                {settingsSubpage === 'vault' && (
-                  <span className={`px-2.5 py-1 rounded-full text-[10px] font-semibold border ${vaultStatus?.is_unlocked ? 'bg-emerald-500/15 text-emerald-400 border-emerald-500/30' : 'bg-amber-500/15 text-amber-400 border-amber-500/30'}`}>
-                    {vaultStatus?.is_unlocked ? '🔓 Unlocked' : '🔒 Locked'}
-                  </span>
-                )}
-                {settingsSubpage === 'autobackup' && (
-                  <span className={`px-2.5 py-1 rounded-full text-[10px] font-semibold border ${syncSettings.data?.enabled ? 'bg-emerald-500/15 text-emerald-400 border-emerald-500/30' : 'bg-telegram-hover/40 text-telegram-subtext border-telegram-border/50'}`}>
-                    {syncSettings.data?.enabled ? 'Active' : 'Off'}
-                  </span>
-                )}
+        ) : settingsSubpage !== null ? (
+          /* Settings / Profile Subpage Header */
+          <div className="flex items-center justify-between w-full gap-2">
+            <div className="flex items-center gap-2 min-w-0 flex-1">
+              <button
+                type="button"
+                onClick={() => handleBack()}
+                className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-xl bg-telegram-hover/40 hover:bg-telegram-hover/70 active:scale-95 border border-telegram-border/40 text-telegram-primary text-xs font-semibold transition shrink-0 cursor-pointer"
+                aria-label="Back"
+              >
+                <ChevronLeft className="w-4 h-4" />
+                <span>{getBackLabel()}</span>
+              </button>
+              <div className="min-w-0">
+                <h1 className="text-sm font-bold text-telegram-text tracking-tight leading-tight truncate">
+                  {settingsSubpage === 'account' && 'Account & Telegram Session'}
+                  {settingsSubpage === 'pro_plans' && 'TG Drive Pro & Plans'}
+                  {settingsSubpage === 'vault' && 'Cloud Vault & Encryption'}
+                  {settingsSubpage === 'preferences' && t('common.preferences')}
+                  {settingsSubpage === 'autobackup' && 'Auto-Backup & Sync'}
+                  {settingsSubpage === 'security' && 'Device Privacy & App Lock'}
+                  {settingsSubpage === 'transfers' && 'Transfer Reliability'}
+                  {settingsSubpage === 'storage' && t('settings.offline_cache')}
+                  {settingsSubpage === 'diagnostics' && t('settings.connection_diagnostics')}
+                  {settingsSubpage === 'proxy' && t('common.proxy')}
+                  {settingsSubpage === 'media' && 'Media & Playback'}
+                  {settingsSubpage === 'supporter' && 'Privacy & Supporter'}
+                  {settingsSubpage === 'updates' && 'Software Updates & Version'}
+                </h1>
               </div>
             </div>
-          ) : (
-            /* Root Settings Header */
-            <div className="flex items-center justify-between w-full">
-              <div className="flex items-center gap-2.5 min-w-0">
-                <div className="flex items-center justify-center w-8 h-8 rounded-xl bg-telegram-primary/15 text-telegram-primary border border-telegram-primary/20 shrink-0">
-                  <SettingsIcon className="w-4 h-4" />
-                </div>
-                <div className="min-w-0">
-                  <h1 className="text-sm font-bold text-telegram-text tracking-tight leading-tight">
-                    {t('common.settings')}
-                  </h1>
-                  <p className="text-[10px] text-telegram-subtext font-medium leading-none mt-0.5">
-                    Preferences, security &amp; connections
-                  </p>
-                </div>
-              </div>
-              <div className="flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-telegram-hover/40 border border-telegram-border/30 text-[10px] font-mono shrink-0">
-                <span className={`w-1.5 h-1.5 rounded-full ${isConnected ? 'bg-green-500 animate-pulse' : 'bg-red-500'}`} />
-                <span className={isConnected ? 'text-green-400 font-semibold' : 'text-red-400 font-semibold'}>
-                  {isConnected ? 'Connected' : 'Offline'}
+            <div className="flex items-center gap-1.5 shrink-0">
+              {settingsSubpage === 'pro_plans' && (
+                <span className={`px-2.5 py-1 rounded-full text-[10px] font-black uppercase tracking-wider border ${
+                  mobileLicense?.isLicensed
+                    ? mobileLicense?.planType === 'trial'
+                      ? 'bg-amber-500/15 text-amber-400 border-amber-500/30'
+                      : 'bg-emerald-500/15 text-emerald-400 border-emerald-500/30'
+                    : 'bg-amber-500/15 text-amber-400 border-amber-500/30'
+                }`}>
+                  {mobileLicense?.isLicensed ? (mobileLicense.planType === 'trial' ? '🎁 Trial' : '✓ Pro Active') : '⚡ Free Plan'}
                 </span>
+              )}
+              {settingsSubpage === 'account' && (
+                <span className={`px-2.5 py-1 rounded-full text-[10px] font-bold border ${isConnected ? 'bg-emerald-500/15 text-emerald-400 border-emerald-500/30' : 'bg-red-500/10 text-red-400 border-red-500/20'}`}>
+                  {isConnected ? '● MTProto Active' : '● Offline'}
+                </span>
+              )}
+              {settingsSubpage === 'updates' && (
+                <span className={`px-2.5 py-1 rounded-full text-[10px] font-bold border ${updateAvailable ? 'bg-amber-500/15 text-amber-400 border-amber-500/30 animate-pulse' : 'bg-emerald-500/15 text-emerald-400 border-emerald-500/30'}`}>
+                  {updateAvailable ? `v${updateVersion} Available` : `v${appVersion} (Latest)`}
+                </span>
+              )}
+              {settingsSubpage === 'vault' && (
+                <span className={`px-2.5 py-1 rounded-full text-[10px] font-semibold border ${vaultStatus?.is_unlocked ? 'bg-emerald-500/15 text-emerald-400 border-emerald-500/30' : 'bg-amber-500/15 text-amber-400 border-amber-500/30'}`}>
+                  {vaultStatus?.is_unlocked ? '🔓 Unlocked' : '🔒 Locked'}
+                </span>
+              )}
+              {settingsSubpage === 'autobackup' && (
+                <span className={`px-2.5 py-1 rounded-full text-[10px] font-semibold border ${syncSettings.data?.enabled ? 'bg-emerald-500/15 text-emerald-400 border-emerald-500/30' : 'bg-telegram-hover/40 text-telegram-subtext border-telegram-border/50'}`}>
+                  {syncSettings.data?.enabled ? 'Active' : 'Off'}
+                </span>
+              )}
+            </div>
+          </div>
+        ) : activeTab === 'settings' ? (
+          /* Root Settings Header */
+          <div className="flex items-center justify-between w-full">
+            <div className="flex items-center gap-2.5 min-w-0">
+              <div className="flex items-center justify-center w-8 h-8 rounded-xl bg-telegram-primary/15 text-telegram-primary border border-telegram-primary/20 shrink-0">
+                <SettingsIcon className="w-4 h-4" />
+              </div>
+              <div className="min-w-0">
+                <h1 className="text-sm font-bold text-telegram-text tracking-tight leading-tight">
+                  {t('common.settings')}
+                </h1>
+                <p className="text-[10px] text-telegram-subtext font-medium leading-none mt-0.5">
+                  Preferences, security &amp; connections
+                </p>
               </div>
             </div>
-          )
+            <div className="flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-telegram-hover/40 border border-telegram-border/30 text-[10px] font-mono shrink-0">
+              <span className={`w-1.5 h-1.5 rounded-full ${isConnected ? 'bg-green-500 animate-pulse' : 'bg-red-500'}`} />
+              <span className={isConnected ? 'text-green-400 font-semibold' : 'text-red-400 font-semibold'}>
+                {isConnected ? 'Connected' : 'Offline'}
+              </span>
+            </div>
+          </div>
         ) : activeTab === 'profile' ? (
           /* Profile Tab Header */
           <div className="flex items-center justify-between w-full">
@@ -3894,6 +4024,29 @@ export default function MobileDashboard({ onLogout }: { onLogout?: () => void })
                   onClick={() => openSettingsSubpage('supporter')}
                 />
 
+                {/* 11. Software Updates & Version Card */}
+                <SettingsMenuCard
+                  icon={Download}
+                  iconBgClass="bg-emerald-500/15"
+                  iconBorderClass="border-emerald-500/30"
+                  iconColorClass="text-emerald-400"
+                  title="Software Updates & Version"
+                  subtitle={`Installed v${appVersion} • ${updateAvailable ? `v${updateVersion} ready to install` : 'Check for new releases'}`}
+                  badge={
+                    updateAvailable ? (
+                      <span className="px-2 py-0.5 rounded-full text-[9px] font-bold bg-emerald-500/20 text-emerald-400 border border-emerald-500/35 animate-pulse flex items-center gap-1">
+                        <Sparkles className="w-2.5 h-2.5" />
+                        v{updateVersion} Available
+                      </span>
+                    ) : (
+                      <span className="px-2 py-0.5 rounded-full text-[9px] font-semibold bg-telegram-hover/40 text-telegram-subtext border border-telegram-border/50">
+                        v{appVersion} (Latest)
+                      </span>
+                    )
+                  }
+                  onClick={() => openSettingsSubpage('updates')}
+                />
+
                 {/* About Card & Logout Button */}
                 <div className="pt-2 space-y-3">
                   <StructuredBrandCard appVersion={appVersion} />
@@ -3909,12 +4062,14 @@ export default function MobileDashboard({ onLogout }: { onLogout?: () => void })
                 </div>
               </div>
             )}
+          </div>
+        )}
 
-            {/* Subpages Container (settingsSubpage !== null) */}
-            {settingsSubpage !== null && (
-              <div className="space-y-4 animate-in fade-in slide-in-from-right-2 duration-200">
-                {/* 1. Cloud Vault Subpage */}
-                {settingsSubpage === 'vault' && (
+        {/* ── Subpages Container (settingsSubpage !== null) ──────────────── */}
+        {settingsSubpage !== null && (
+          <div className="space-y-4 animate-in fade-in slide-in-from-right-2 duration-200 pb-36 sm:pb-40">
+            {/* 1. Cloud Vault Subpage */}
+            {settingsSubpage === 'vault' && (
                   <>
                     <section className="rounded-2xl bg-telegram-surface/80 border border-telegram-border/50 p-4 shadow-sm backdrop-blur-md">
                       <div className="flex items-center justify-between gap-3 mb-3">
@@ -4974,141 +5129,821 @@ export default function MobileDashboard({ onLogout }: { onLogout?: () => void })
                     <p className="text-[10px] leading-relaxed text-telegram-subtext mt-3">All Telegram tokens and credentials remain encrypted exclusively on your local device. Transfers connect directly to Telegram.</p>
                   </section>
                 )}
+
+                {/* 11. Software Updates Subpage */}
+                {settingsSubpage === 'updates' && (
+                  <section className="space-y-4 animate-in fade-in slide-in-from-right-2 duration-200">
+                    {/* Top Version Card */}
+                    <div className="relative rounded-3xl overflow-hidden border border-emerald-500/30 shadow-xl bg-gradient-to-br from-emerald-500/10 via-telegram-surface/90 to-sky-500/10 backdrop-blur-xl p-5 space-y-4 text-center">
+                      <div className="flex flex-col items-center gap-2">
+                        <div className="w-14 h-14 rounded-2xl bg-gradient-to-br from-emerald-400 to-sky-500 flex items-center justify-center text-slate-950 shadow-lg shadow-emerald-500/25">
+                          <Download className="w-7 h-7" />
+                        </div>
+                        <div>
+                          <h3 className="text-base font-black text-telegram-text">Software Updates</h3>
+                          <p className="text-xs text-telegram-subtext mt-0.5">
+                            Keep TG Drive secure, ultra-fast &amp; up-to-date
+                          </p>
+                        </div>
+                      </div>
+
+                      {/* Current vs New Version Comparison Grid */}
+                      <div className="grid grid-cols-2 gap-3 pt-1">
+                        <div className="p-3.5 rounded-2xl bg-telegram-bg/60 border border-telegram-border/50 text-left">
+                          <span className="text-[10px] uppercase font-bold text-telegram-subtext tracking-wider block mb-1">
+                            Installed Version
+                          </span>
+                          <span className="text-sm font-black font-mono text-telegram-text block">
+                            v{appVersion}
+                          </span>
+                          <span className="text-[10px] text-emerald-400 font-semibold inline-flex items-center gap-1 mt-1">
+                            <CheckCircle2 className="w-3 h-3" /> Current Build
+                          </span>
+                        </div>
+
+                        <div className="p-3.5 rounded-2xl bg-telegram-bg/60 border border-telegram-border/50 text-left">
+                          <span className="text-[10px] uppercase font-bold text-telegram-subtext tracking-wider block mb-1">
+                            Latest Version
+                          </span>
+                          <span className={`text-sm font-black font-mono block ${updateAvailable ? 'text-amber-400' : 'text-telegram-primary'}`}>
+                            {updateVersion ? `v${updateVersion}` : (updateChecking ? 'Checking…' : `v${appVersion}`)}
+                          </span>
+                          <span className={`text-[10px] font-semibold inline-flex items-center gap-1 mt-1 ${updateAvailable ? 'text-amber-400' : 'text-emerald-400'}`}>
+                            {updateAvailable ? (
+                              <>
+                                <Sparkles className="w-3 h-3 animate-pulse" /> New Update Ready
+                              </>
+                            ) : (
+                              <>
+                                <CheckCircle2 className="w-3 h-3" /> Up to Date
+                              </>
+                            )}
+                          </span>
+                        </div>
+                      </div>
+
+                      {/* Status / Error Banner */}
+                      {updateError && (
+                        <div className="p-3 rounded-2xl bg-red-500/10 border border-red-500/25 text-left flex items-start gap-2.5">
+                          <AlertCircle className="w-4 h-4 text-red-400 shrink-0 mt-0.5" />
+                          <div className="text-xs">
+                            <p className="font-bold text-red-400">Update Check Notice</p>
+                            <p className="text-[11px] text-telegram-subtext mt-0.5">{updateError}</p>
+                          </div>
+                        </div>
+                      )}
+
+                      {/* Progress Bar if Downloading */}
+                      {updateDownloading && (
+                        <div className="space-y-2 p-3.5 rounded-2xl bg-telegram-bg/70 border border-telegram-primary/30">
+                          <div className="flex items-center justify-between text-xs font-bold">
+                            <span className="text-telegram-primary flex items-center gap-1.5">
+                              <RefreshCw className="w-3.5 h-3.5 animate-spin" />
+                              {updatePhase === 'verifying' ? 'Verifying signed package…' : updatePhase === 'installing' ? 'Launching installer…' : `Downloading update…`}
+                            </span>
+                            <span className="font-mono text-telegram-text">{updateProgress}%</span>
+                          </div>
+                          <div className="h-2 w-full bg-telegram-border/50 rounded-full overflow-hidden">
+                            <div
+                              className="h-full bg-gradient-to-r from-telegram-primary to-emerald-400 rounded-full transition-all duration-300"
+                              style={{ width: `${updateProgress}%` }}
+                            />
+                          </div>
+                          <p className="text-[10px] text-telegram-subtext text-center">
+                            Please keep the app open while the update package is verified.
+                          </p>
+                        </div>
+                      )}
+
+                      {/* Action Buttons */}
+                      <div className="space-y-2 pt-1">
+                        {updateAvailable && !updateDownloading ? (
+                          <button
+                            type="button"
+                            onClick={() => void downloadAndInstallUpdate()}
+                            className="w-full py-3.5 px-4 rounded-2xl bg-gradient-to-r from-emerald-400 via-teal-500 to-sky-500 hover:brightness-110 active:scale-[0.98] text-slate-950 font-black text-xs shadow-lg shadow-emerald-500/25 flex items-center justify-center gap-2 transition-all"
+                          >
+                            <Download className="w-4 h-4" />
+                            <span>{updateManagedByPkg ? 'Open GitHub Release Page' : `Install Update (v${updateVersion})`}</span>
+                          </button>
+                        ) : !updateDownloading ? (
+                          <button
+                            type="button"
+                            onClick={() => void checkForUpdates()}
+                            disabled={updateChecking}
+                            className="w-full py-3.5 px-4 rounded-2xl bg-telegram-primary text-black font-black text-xs hover:bg-telegram-primary/90 active:scale-[0.98] shadow-md shadow-telegram-primary/20 flex items-center justify-center gap-2 transition-all disabled:opacity-50"
+                          >
+                            <RefreshCw className={`w-4 h-4 ${updateChecking ? 'animate-spin' : ''}`} />
+                            <span>{updateChecking ? 'Checking for Updates…' : 'Check for Updates Now'}</span>
+                          </button>
+                        ) : null}
+
+                        <button
+                          type="button"
+                          onClick={() => void openExternalUrl(RELEASES_URL)}
+                          className="w-full py-2.5 px-3 rounded-xl bg-telegram-bg/50 hover:bg-telegram-hover active:scale-[0.98] border border-telegram-border/40 text-telegram-subtext hover:text-telegram-text font-bold text-[11px] flex items-center justify-center gap-1.5 transition-all"
+                        >
+                          <Globe className="w-3.5 h-3.5" />
+                          <span>View Official GitHub Releases</span>
+                        </button>
+                      </div>
+                    </div>
+
+                    {/* Changelog & Technical Specifications */}
+                    <div className="rounded-2xl bg-telegram-surface/80 border border-telegram-border/50 p-4 shadow-sm backdrop-blur-md space-y-3 text-xs">
+                      <div className="flex items-center gap-2 text-telegram-primary font-bold uppercase tracking-wider text-[11px]">
+                        <Sparkles className="w-3.5 h-3.5" />
+                        <span>Build Specifications &amp; Features</span>
+                      </div>
+
+                      <div className="space-y-2 text-telegram-subtext text-[11px] leading-relaxed">
+                        <div className="p-2.5 rounded-xl bg-telegram-bg/40 border border-telegram-border/30 flex items-start gap-2">
+                          <span className="text-emerald-400 font-bold">⚡</span>
+                          <div>
+                            <strong className="text-telegram-text">MTProto 2.0 High-Speed Engine:</strong> 100 MB/s dynamic chunking and parallel connection pipeline.
+                          </div>
+                        </div>
+
+                        <div className="p-2.5 rounded-xl bg-telegram-bg/40 border border-telegram-border/30 flex items-start gap-2">
+                          <span className="text-sky-400 font-bold">🛡️</span>
+                          <div>
+                            <strong className="text-telegram-text">TDENC2 Zero-Knowledge Vault:</strong> Full AEAD client-side encryption for private photos and documents.
+                          </div>
+                        </div>
+
+                        <div className="p-2.5 rounded-xl bg-telegram-bg/40 border border-telegram-border/30 flex items-start gap-2">
+                          <span className="text-purple-400 font-bold">📱</span>
+                          <div>
+                            <strong className="text-telegram-text">Permanent Telegram Binding:</strong> Seamless cross-device license activation with zero repeated prompts.
+                          </div>
+                        </div>
+                      </div>
+                    </div>
+                  </section>
+                )}
+
+                {/* 12. Account & Telegram Session Subpage */}
+                {settingsSubpage === 'account' && (
+                  <section className="space-y-4 animate-in fade-in slide-in-from-right-2 duration-200">
+                    {/* Hero Identity Card */}
+                    <div className="relative rounded-3xl overflow-hidden border border-sky-500/30 shadow-xl bg-gradient-to-br from-sky-500/10 via-telegram-surface/90 to-indigo-500/10 backdrop-blur-xl p-5 space-y-4">
+                      <div className="flex items-center gap-4">
+                        <div className="relative shrink-0">
+                          <div className="w-18 h-18 sm:w-20 sm:h-20 rounded-2xl bg-gradient-to-tr from-sky-500 via-indigo-500 to-purple-600 flex items-center justify-center text-white font-black text-2xl sm:text-3xl shadow-xl ring-2 ring-white/20">
+                            {userProfile?.firstName ? userProfile.firstName.charAt(0).toUpperCase() : <User className="w-9 h-9 sm:w-10 sm:h-10" />}
+                          </div>
+                          {userProfile?.isPremium && (
+                            <div className="absolute -bottom-1 -right-1 w-6 h-6 rounded-full bg-amber-500 text-black flex items-center justify-center text-xs font-black shadow-lg ring-2 ring-telegram-surface" title="Telegram Premium">
+                              ★
+                            </div>
+                          )}
+                          {isConnected && (
+                            <span className="absolute -top-1 -right-1 flex h-4 w-4">
+                              <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75" />
+                              <span className="relative inline-flex rounded-full h-4 w-4 bg-emerald-500 ring-2 ring-telegram-surface" />
+                            </span>
+                          )}
+                        </div>
+
+                        <div className="min-w-0 flex-1">
+                          <h2 className="text-xl font-black text-telegram-text tracking-tight truncate leading-tight">
+                            {userProfile ? `${userProfile.firstName} ${userProfile.lastName || ''}`.trim() : 'Telegram Account'}
+                          </h2>
+                          {userProfile?.username ? (
+                            <p className="text-sm font-bold text-telegram-primary truncate mt-0.5">@{userProfile.username}</p>
+                          ) : (
+                            <p className="text-xs text-telegram-subtext mt-0.5">No username set</p>
+                          )}
+                          <div className="flex items-center gap-2 flex-wrap mt-2">
+                            <span className={`inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-[10px] font-bold border ${isConnected ? 'bg-emerald-500/15 text-emerald-400 border-emerald-500/30' : 'bg-red-500/10 text-red-400 border-red-500/20'}`}>
+                              <span className={`w-1.5 h-1.5 rounded-full ${isConnected ? 'bg-emerald-400 animate-pulse' : 'bg-red-400'}`} />
+                              {isConnected ? 'Connected · MTProto Active' : 'Disconnected'}
+                            </span>
+                            {userProfile?.isPremium && (
+                              <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[10px] font-bold bg-amber-500/15 text-amber-400 border border-amber-500/30">
+                                ★ Premium
+                              </span>
+                            )}
+                          </div>
+                        </div>
+                      </div>
+                    </div>
+
+                    {/* Telegram Identity Credentials Card */}
+                    <div className="space-y-2">
+                      <div className="flex items-center gap-2 px-1">
+                        <KeyRound className="w-3.5 h-3.5 text-sky-400" />
+                        <span className="text-[11px] font-bold uppercase tracking-wider text-telegram-subtext">Telegram Identity &amp; Credentials</span>
+                      </div>
+
+                      <div className="rounded-2xl bg-telegram-surface/80 border border-telegram-border/50 divide-y divide-telegram-border/30 overflow-hidden shadow-xs backdrop-blur-md">
+                        {/* User ID */}
+                        <div className="flex items-center justify-between p-3.5 hover:bg-telegram-hover/30 transition-colors">
+                          <div className="flex items-center gap-3">
+                            <div className="w-8 h-8 rounded-xl bg-sky-500/15 text-sky-400 border border-sky-500/20 flex items-center justify-center shrink-0">
+                              <KeyRound className="w-4 h-4" />
+                            </div>
+                            <div>
+                              <span className="text-xs font-bold text-telegram-text block">Telegram User ID</span>
+                              <span className="text-[10px] text-telegram-subtext">Unique 64-bit Telegram account identifier</span>
+                            </div>
+                          </div>
+                          <button
+                            type="button"
+                            onClick={() => { void copyToClipboard(String(userProfile?.id ?? '')); toast.success('User ID copied to clipboard'); }}
+                            className="inline-flex items-center gap-1.5 px-2.5 py-1.5 rounded-xl bg-telegram-bg hover:bg-telegram-hover active:scale-95 border border-telegram-border/50 font-mono text-xs font-bold text-telegram-text hover:text-telegram-primary transition-all group"
+                            title="Click to copy User ID"
+                          >
+                            <span>{userProfile?.id ?? '—'}</span>
+                            <Copy className="w-3.5 h-3.5 text-telegram-subtext group-hover:text-telegram-primary transition-colors" />
+                          </button>
+                        </div>
+
+                        {/* Phone Number */}
+                        {userProfile?.phone && (
+                          <div className="flex items-center justify-between p-3.5 hover:bg-telegram-hover/30 transition-colors">
+                            <div className="flex items-center gap-3">
+                              <div className="w-8 h-8 rounded-xl bg-indigo-500/15 text-indigo-400 border border-indigo-500/20 flex items-center justify-center shrink-0">
+                                <Smartphone className="w-4 h-4" />
+                              </div>
+                              <div>
+                                <span className="text-xs font-bold text-telegram-text block">Registered Phone</span>
+                                <span className="text-[10px] text-telegram-subtext">Account phone linked with Telegram</span>
+                              </div>
+                            </div>
+                            <button
+                              type="button"
+                              onClick={() => { void copyToClipboard(userProfile.phone || ''); toast.success('Phone number copied to clipboard'); }}
+                              className="inline-flex items-center gap-1.5 px-2.5 py-1.5 rounded-xl bg-telegram-bg hover:bg-telegram-hover active:scale-95 border border-telegram-border/50 font-mono text-xs font-bold text-telegram-text hover:text-telegram-primary transition-all group"
+                              title="Click to copy Phone Number"
+                            >
+                              <span>{userProfile.phone.startsWith('+') ? userProfile.phone : `+${userProfile.phone}`}</span>
+                              <Copy className="w-3.5 h-3.5 text-telegram-subtext group-hover:text-telegram-primary transition-colors" />
+                            </button>
+                          </div>
+                        )}
+
+                        {/* Username */}
+                        <div className="flex items-center justify-between p-3.5 hover:bg-telegram-hover/30 transition-colors">
+                          <div className="flex items-center gap-3">
+                            <div className="w-8 h-8 rounded-xl bg-purple-500/15 text-purple-400 border border-purple-500/20 flex items-center justify-center shrink-0">
+                              <Globe className="w-4 h-4" />
+                            </div>
+                            <div>
+                              <span className="text-xs font-bold text-telegram-text block">Public Username</span>
+                              <span className="text-[10px] text-telegram-subtext">Telegram handle for direct mention</span>
+                            </div>
+                          </div>
+                          {userProfile?.username ? (
+                            <button
+                              type="button"
+                              onClick={() => { void copyToClipboard(`@${userProfile.username}`); toast.success('Username copied to clipboard'); }}
+                              className="inline-flex items-center gap-1.5 px-2.5 py-1.5 rounded-xl bg-telegram-bg hover:bg-telegram-hover active:scale-95 border border-telegram-border/50 text-xs font-bold text-telegram-primary hover:underline transition-all group"
+                              title="Click to copy Username"
+                            >
+                              <span>@{userProfile.username}</span>
+                              <Copy className="w-3.5 h-3.5 text-telegram-subtext group-hover:text-telegram-primary transition-colors" />
+                            </button>
+                          ) : (
+                            <span className="text-xs text-telegram-subtext font-medium px-2 py-1">None</span>
+                          )}
+                        </div>
+
+                        {/* Membership status */}
+                        <div className="flex items-center justify-between p-3.5 hover:bg-telegram-hover/30 transition-colors">
+                          <div className="flex items-center gap-3">
+                            <div className="w-8 h-8 rounded-xl bg-amber-500/15 text-amber-400 border border-amber-500/20 flex items-center justify-center shrink-0">
+                              <Sparkles className="w-4 h-4" />
+                            </div>
+                            <div>
+                              <span className="text-xs font-bold text-telegram-text block">Telegram Tier</span>
+                              <span className="text-[10px] text-telegram-subtext">Telegram Premium subscription status</span>
+                            </div>
+                          </div>
+                          <span className={`px-2.5 py-1 rounded-full text-[11px] font-bold border ${userProfile?.isPremium ? 'bg-amber-500/15 text-amber-400 border-amber-500/30' : 'bg-telegram-bg text-telegram-subtext border-telegram-border/50'}`}>
+                            {userProfile?.isPremium ? '★ Telegram Premium' : 'Standard Account'}
+                          </span>
+                        </div>
+                      </div>
+                    </div>
+
+                    {/* MTProto Session Security Card */}
+                    <div className="space-y-2">
+                      <div className="flex items-center gap-2 px-1">
+                        <ShieldCheck className="w-3.5 h-3.5 text-emerald-400" />
+                        <span className="text-[11px] font-bold uppercase tracking-wider text-telegram-subtext">MTProto Session &amp; Security</span>
+                      </div>
+
+                      <div className="rounded-2xl bg-telegram-surface/80 border border-telegram-border/50 divide-y divide-telegram-border/30 overflow-hidden shadow-xs backdrop-blur-md text-xs">
+                        <div className="flex items-center justify-between p-3.5">
+                          <span className="text-telegram-subtext font-medium">Protocol</span>
+                          <span className="font-bold text-telegram-text font-mono">MTProto 2.0 (AEAD-IGE)</span>
+                        </div>
+                        <div className="flex items-center justify-between p-3.5">
+                          <span className="text-telegram-subtext font-medium">Session Status</span>
+                          <span className={`inline-flex items-center gap-1.5 font-bold ${isConnected ? 'text-emerald-400' : 'text-red-400'}`}>
+                            <span className={`w-2 h-2 rounded-full ${isConnected ? 'bg-emerald-400 animate-pulse' : 'bg-red-400'}`} />
+                            {isConnected ? 'Direct MTProto Active' : 'Disconnected'}
+                          </span>
+                        </div>
+                        <div className="flex items-center justify-between p-3.5">
+                          <span className="text-telegram-subtext font-medium">Key Storage</span>
+                          <span className="font-bold text-emerald-400">Local Encrypted Keystore</span>
+                        </div>
+                        <div className="flex items-center justify-between p-3.5">
+                          <span className="text-telegram-subtext font-medium">Zero-Knowledge</span>
+                          <span className="font-semibold text-telegram-text">No intermediate cloud proxies</span>
+                        </div>
+                      </div>
+                    </div>
+
+                    {/* Action Buttons: Copy & Logout */}
+                    <div className="space-y-3 pt-2">
+                      <button
+                        type="button"
+                        onClick={() => {
+                          const summary = `Telegram Account Info:\nName: ${userProfile?.firstName || ''} ${userProfile?.lastName || ''}\nUser ID: ${userProfile?.id || ''}\nPhone: ${userProfile?.phone || ''}\nUsername: ${userProfile?.username ? '@' + userProfile.username : 'N/A'}`;
+                          void copyToClipboard(summary.trim());
+                          toast.success('Account summary copied to clipboard');
+                        }}
+                        className="w-full flex items-center justify-center gap-2 py-3.5 rounded-2xl bg-telegram-surface hover:bg-telegram-hover active:scale-[0.98] border border-telegram-border/50 text-telegram-text font-bold text-xs shadow-xs transition-all"
+                      >
+                        <Copy className="w-4 h-4 text-telegram-primary" />
+                        <span>Copy Profile Summary</span>
+                      </button>
+
+                      {/* Account Termination & Logout */}
+                      <div className="rounded-2xl bg-red-500/5 border border-red-500/20 p-4 shadow-sm backdrop-blur-md space-y-3">
+                        <div className="flex items-center gap-2">
+                          <LogOut className="w-3.5 h-3.5 text-red-400" />
+                          <span className="text-[11px] font-bold uppercase tracking-wider text-red-400/90">Session Termination</span>
+                        </div>
+                        <p className="text-[11px] text-telegram-subtext leading-relaxed">
+                          Logging out will safely terminate your local MTProto session and clear encrypted cache from this device. All your cloud files remain safely preserved in Telegram.
+                        </p>
+                        <button
+                          type="button"
+                          onClick={handleLogout}
+                          className="w-full flex items-center justify-center gap-2 py-3.5 rounded-xl bg-red-500/15 hover:bg-red-500/25 active:bg-red-500/35 text-red-400 border border-red-500/30 font-bold text-xs active:scale-[0.98] transition-all duration-200 shadow-sm"
+                        >
+                          <LogOut className="w-4 h-4" />
+                          <span>{t('common.logout')}</span>
+                        </button>
+                      </div>
+                    </div>
+                  </section>
+                )}
+
+                {/* 13. TG Drive Pro & Plans Subpage */}
+                {settingsSubpage === 'pro_plans' && (() => {
+                  const expiry = licenseManager.getExpiryDetails(mobileLicense?.expiresAt ?? null);
+                  const isProActive = Boolean(mobileLicense?.isLicensed);
+                  const planType = mobileLicense?.planType;
+                  const isTrial = planType === 'trial';
+                  const isAnnual = planType === 'annual';
+                  const isMonthly = planType === 'monthly';
+
+                  return (
+                    <section className="space-y-4 animate-in fade-in slide-in-from-right-2 duration-200">
+                      {/* Hero Current License Status Card */}
+                      <div className="relative rounded-3xl overflow-hidden border border-amber-500/30 shadow-xl bg-gradient-to-br from-amber-500/15 via-telegram-surface/90 to-purple-500/15 backdrop-blur-xl p-5 space-y-4">
+                        <div className="absolute -top-12 -right-12 w-44 h-44 bg-amber-500/20 rounded-full blur-2xl pointer-events-none" />
+
+                        {/* Top Header */}
+                        <div className="flex items-center justify-between">
+                          <div className="flex items-center gap-3">
+                            <div className="w-12 h-12 rounded-2xl bg-gradient-to-br from-amber-400 to-orange-500 flex items-center justify-center text-slate-950 font-black shadow-lg shadow-amber-500/25">
+                              <Zap className="w-6 h-6 fill-slate-950" />
+                            </div>
+                            <div>
+                              <div className="flex items-center gap-2">
+                                <h2 className="text-lg font-black text-telegram-text tracking-tight">TG Drive Pro</h2>
+                                <span className={`px-2.5 py-0.5 rounded-full text-[9px] font-black uppercase tracking-wider border ${
+                                  isProActive
+                                    ? isTrial
+                                      ? 'bg-amber-500/20 text-amber-400 border-amber-500/30'
+                                      : 'bg-emerald-500/20 text-emerald-400 border-emerald-500/30'
+                                    : 'bg-red-500/10 text-red-400 border-red-500/20'
+                                }`}>
+                                  {isProActive ? (isTrial ? '🎁 Free Trial' : isAnnual ? '🌟 Annual Pass' : isMonthly ? '📅 Monthly Pass' : '✓ Lifetime Pro') : '⚡ Free Plan'}
+                                </span>
+                              </div>
+                              <p className="text-xs text-telegram-subtext mt-0.5">
+                                {userProfile ? `Linked Telegram ID: ${userProfile.id}` : 'Account Binding Active'}
+                              </p>
+                            </div>
+                          </div>
+                        </div>
+
+                        {/* Current Plan Specs Box */}
+                        <div className="rounded-2xl bg-telegram-bg/60 border border-telegram-border/50 divide-y divide-telegram-border/30 overflow-hidden text-xs">
+                          <div className="flex items-center justify-between px-3.5 py-2.5">
+                            <span className="text-telegram-subtext font-medium">Active Status</span>
+                            <span className="font-bold text-telegram-text">
+                              {isProActive
+                                ? (isTrial ? '🎁 Free Trial Pass' : isAnnual ? '🌟 1-Year Annual Pass' : isMonthly ? '📅 1-Month Pass' : '⚡ Lifetime Pro Access')
+                                : 'No Active Pro License'}
+                            </span>
+                          </div>
+
+                          <div className="flex items-center justify-between px-3.5 py-2.5">
+                            <span className="text-telegram-subtext font-medium">Plan Validity</span>
+                            <span className={`font-semibold ${expiry.isExpired ? 'text-red-400' : expiry.isLifetime ? 'text-emerald-400' : 'text-amber-400'}`}>
+                              {isProActive ? expiry.formattedDate : 'Standard Free Tier'}
+                            </span>
+                          </div>
+
+                          {isProActive && !expiry.isLifetime && (
+                            <div className="flex items-center justify-between px-3.5 py-2.5 bg-amber-500/5">
+                              <span className="text-amber-300 font-medium flex items-center gap-1.5">
+                                <Clock className="w-3.5 h-3.5" />
+                                Time Remaining
+                              </span>
+                              <span className={`px-2 py-0.5 rounded-md font-bold text-[11px] ${
+                                expiry.isExpired
+                                  ? 'bg-red-500/20 text-red-400 border border-red-500/30'
+                                  : 'bg-amber-500/20 text-amber-400 border border-amber-500/30 animate-pulse'
+                              }`}>
+                                ⏳ {expiry.countdownText}
+                              </span>
+                            </div>
+                          )}
+
+                          <div className="flex items-center justify-between px-3.5 py-2.5">
+                            <span className="text-telegram-subtext font-medium">Cloud Vault &amp; Ads</span>
+                            <span className="font-semibold text-emerald-400">
+                              {isProActive ? '100% Ad-Free · Turbo Speed' : 'Standard'}
+                            </span>
+                          </div>
+                        </div>
+
+                        {/* Direct Action Buttons */}
+                        <div className="flex items-center gap-2 pt-1 flex-wrap">
+                          {(!isProActive || isTrial || expiry.isExpired) && (
+                            <button
+                              type="button"
+                              onClick={() => {
+                                setExpiredAlertText(expiry.isExpired ? 'Your plan has expired. Please upgrade or purchase a Pro license.' : null);
+                                setShowProUpgradeModal(true);
+                              }}
+                              className="flex-1 min-w-[140px] py-3 px-4 rounded-xl bg-gradient-to-r from-amber-500 via-orange-500 to-amber-600 hover:brightness-110 active:scale-[0.98] text-slate-950 font-black text-xs shadow-md shadow-amber-500/25 flex items-center justify-center gap-2 transition-all"
+                            >
+                              <Zap className="w-4 h-4 fill-slate-950" />
+                              <span>{isTrial ? '🚀 Upgrade to Lifetime' : '🚀 Upgrade to Pro'}</span>
+                            </button>
+                          )}
+
+                          <button
+                            type="button"
+                            onClick={handleSyncMobileLicense}
+                            disabled={isLicenseSyncing}
+                            className="py-3 px-3.5 rounded-xl bg-telegram-surface hover:bg-telegram-hover active:scale-[0.98] border border-telegram-border/50 text-telegram-text font-bold text-xs flex items-center justify-center gap-1.5 transition-all"
+                            title="Sync License with Telegram Account"
+                          >
+                            <RefreshCw className={`w-3.5 h-3.5 ${isLicenseSyncing ? 'animate-spin' : ''}`} />
+                            <span>{isLicenseSyncing ? 'Syncing…' : 'Sync Status'}</span>
+                          </button>
+
+                          <button
+                            type="button"
+                            onClick={() => setShowManualKeyModal(true)}
+                            className="py-3 px-3.5 rounded-xl bg-telegram-surface hover:bg-telegram-hover active:scale-[0.98] border border-telegram-border/50 text-telegram-primary font-bold text-xs flex items-center justify-center gap-1.5 transition-all"
+                            title="Enter License Key manually"
+                          >
+                            <KeyRound className="w-3.5 h-3.5" />
+                            <span>Enter Key</span>
+                          </button>
+                        </div>
+                      </div>
+
+                      {/* ── Available Plans Section (Structured Cards) ── */}
+                      <div className="space-y-3">
+                        <div className="flex items-center gap-2 px-1">
+                          <Sparkles className="w-3.5 h-3.5 text-amber-400" />
+                          <span className="text-[11px] font-bold uppercase tracking-wider text-telegram-subtext">Available Membership Plans</span>
+                        </div>
+
+                        {/* Plan Card 1: Lifetime Pro Access (Recommended) */}
+                        <div
+                          onClick={() => {
+                            setExpiredAlertText(null);
+                            setShowProUpgradeModal(true);
+                          }}
+                          className="relative overflow-hidden rounded-3xl bg-gradient-to-br from-amber-500/20 via-orange-500/10 to-telegram-surface border-2 border-amber-500/50 p-5 shadow-lg backdrop-blur-xl cursor-pointer active:scale-[0.99] transition-all group hover:border-amber-400"
+                        >
+                          <div className="absolute top-0 right-0 bg-gradient-to-l from-amber-500 to-orange-500 text-slate-950 text-[9px] font-black uppercase tracking-wider px-3 py-1 rounded-bl-xl shadow-xs">
+                            👑 BEST VALUE · ONE-TIME
+                          </div>
+
+                          <div className="space-y-3">
+                            <div className="flex items-start justify-between pr-16">
+                              <div>
+                                <h3 className="text-base font-black text-telegram-text group-hover:text-amber-400 transition-colors flex items-center gap-1.5">
+                                  <Zap className="w-4 h-4 text-amber-400 fill-amber-400" />
+                                  Lifetime Pro Access
+                                </h3>
+                                <p className="text-xs text-telegram-subtext mt-0.5">Pay once, enjoy full Pro privileges forever</p>
+                              </div>
+                            </div>
+
+                            <div className="flex items-baseline gap-2">
+                              <span className="text-2xl font-black text-amber-400 font-mono">₹499</span>
+                              <span className="text-xs text-telegram-subtext line-through font-mono">₹1,499</span>
+                              <span className="text-[10px] font-bold px-2 py-0.5 rounded-md bg-emerald-500/20 text-emerald-400 border border-emerald-500/30">67% OFF</span>
+                            </div>
+
+                            <div className="space-y-2 pt-1 border-t border-amber-500/20 text-xs">
+                              <div className="flex items-center gap-2 text-telegram-text">
+                                <CheckCircle2 className="w-4 h-4 text-emerald-400 shrink-0" />
+                                <span>100% Ad-Free Cloud Vault Forever</span>
+                              </div>
+                              <div className="flex items-center gap-2 text-telegram-text">
+                                <CheckCircle2 className="w-4 h-4 text-emerald-400 shrink-0" />
+                                <span>TDENC2 Zero-Knowledge Military Encryption</span>
+                              </div>
+                              <div className="flex items-center gap-2 text-telegram-text">
+                                <CheckCircle2 className="w-4 h-4 text-emerald-400 shrink-0" />
+                                <span>Maximum Turbo Multi-Chunk Speeds (5x Faster)</span>
+                              </div>
+                              <div className="flex items-center gap-2 text-telegram-text">
+                                <CheckCircle2 className="w-4 h-4 text-emerald-400 shrink-0" />
+                                <span>Multi-Device Sync (Android, PC, Mac, Web)</span>
+                              </div>
+                            </div>
+
+                            <button
+                              type="button"
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                setExpiredAlertText(null);
+                                setShowProUpgradeModal(true);
+                              }}
+                              className="w-full py-3 px-4 rounded-xl bg-gradient-to-r from-amber-500 via-orange-500 to-amber-600 hover:brightness-110 active:scale-[0.98] text-slate-950 font-black text-xs shadow-md shadow-amber-500/25 flex items-center justify-center gap-2 transition-all mt-2"
+                            >
+                              <span>Get Lifetime Pro Access</span>
+                              <ChevronRight className="w-4 h-4" />
+                            </button>
+                          </div>
+                        </div>
+
+                        {/* Plan Card 2: 1-Year Annual Pass */}
+                        <div
+                          onClick={() => {
+                            setExpiredAlertText(null);
+                            setShowProUpgradeModal(true);
+                          }}
+                          className="relative overflow-hidden rounded-2xl bg-telegram-surface/80 border border-telegram-border/60 p-4 shadow-sm backdrop-blur-md cursor-pointer active:scale-[0.99] transition-all hover:border-telegram-primary/40 group"
+                        >
+                          <div className="flex items-center justify-between mb-2">
+                            <div>
+                              <div className="flex items-center gap-2">
+                                <h3 className="text-sm font-bold text-telegram-text group-hover:text-telegram-primary transition-colors">1-Year Annual Pass</h3>
+                                <span className="px-2 py-0.5 rounded-full text-[9px] font-bold bg-sky-500/15 text-sky-400 border border-sky-500/30">365 Days</span>
+                              </div>
+                              <p className="text-[11px] text-telegram-subtext mt-0.5">Full year of high-speed ad-free cloud</p>
+                            </div>
+                            <div className="text-right">
+                              <span className="text-base font-black text-telegram-text font-mono">₹299</span>
+                              <span className="text-[10px] text-telegram-subtext block">/ year</span>
+                            </div>
+                          </div>
+                          <div className="flex items-center justify-between text-xs pt-2 border-t border-telegram-border/30">
+                            <span className="text-telegram-subtext">All Pro Features Included</span>
+                            <span className="text-telegram-primary font-bold inline-flex items-center gap-1 group-hover:translate-x-0.5 transition-transform">
+                              Select Plan <ChevronRight className="w-3.5 h-3.5" />
+                            </span>
+                          </div>
+                        </div>
+
+                        {/* Plan Card 3: 1-Month Pass */}
+                        <div
+                          onClick={() => {
+                            setExpiredAlertText(null);
+                            setShowProUpgradeModal(true);
+                          }}
+                          className="relative overflow-hidden rounded-2xl bg-telegram-surface/80 border border-telegram-border/60 p-4 shadow-sm backdrop-blur-md cursor-pointer active:scale-[0.99] transition-all hover:border-telegram-primary/40 group"
+                        >
+                          <div className="flex items-center justify-between mb-2">
+                            <div>
+                              <div className="flex items-center gap-2">
+                                <h3 className="text-sm font-bold text-telegram-text group-hover:text-telegram-primary transition-colors">1-Month Pass</h3>
+                                <span className="px-2 py-0.5 rounded-full text-[9px] font-bold bg-purple-500/15 text-purple-400 border border-purple-500/30">30 Days</span>
+                              </div>
+                              <p className="text-[11px] text-telegram-subtext mt-0.5">Flexible short-term Pro pass</p>
+                            </div>
+                            <div className="text-right">
+                              <span className="text-base font-black text-telegram-text font-mono">₹49</span>
+                              <span className="text-[10px] text-telegram-subtext block">/ month</span>
+                            </div>
+                          </div>
+                          <div className="flex items-center justify-between text-xs pt-2 border-t border-telegram-border/30">
+                            <span className="text-telegram-subtext">Cancel anytime, full Pro access</span>
+                            <span className="text-telegram-primary font-bold inline-flex items-center gap-1 group-hover:translate-x-0.5 transition-transform">
+                              Select Plan <ChevronRight className="w-3.5 h-3.5" />
+                            </span>
+                          </div>
+                        </div>
+                      </div>
+
+                      {/* ── Feature Comparison Grid ── */}
+                      <div className="space-y-3">
+                        <div className="flex items-center gap-2 px-1">
+                          <Shield className="w-3.5 h-3.5 text-telegram-primary" />
+                          <span className="text-[11px] font-bold uppercase tracking-wider text-telegram-subtext">Pro Superpowers &amp; Features</span>
+                        </div>
+
+                        <div className="grid grid-cols-1 gap-2.5">
+                          <div className="p-3.5 rounded-2xl bg-telegram-surface/80 border border-telegram-border/50 flex items-start gap-3 backdrop-blur-md">
+                            <div className="w-9 h-9 rounded-xl bg-amber-500/15 text-amber-400 border border-amber-500/25 flex items-center justify-center shrink-0">
+                              <Zap className="w-5 h-5" />
+                            </div>
+                            <div>
+                              <h4 className="text-xs font-bold text-telegram-text">5x Turbo Multi-Chunk Engine</h4>
+                              <p className="text-[11px] text-telegram-subtext mt-0.5 leading-relaxed">
+                                Parallel download and upload streams maximize Telegram datacenter transfer speeds.
+                              </p>
+                            </div>
+                          </div>
+
+                          <div className="p-3.5 rounded-2xl bg-telegram-surface/80 border border-telegram-border/50 flex items-start gap-3 backdrop-blur-md">
+                            <div className="w-9 h-9 rounded-xl bg-emerald-500/15 text-emerald-400 border border-emerald-500/25 flex items-center justify-center shrink-0">
+                              <ShieldCheck className="w-5 h-5" />
+                            </div>
+                            <div>
+                              <h4 className="text-xs font-bold text-telegram-text">TDENC2 Zero-Knowledge Vault</h4>
+                              <p className="text-[11px] text-telegram-subtext mt-0.5 leading-relaxed">
+                                Military AEAD client-side encryption keeps private photos and documents invisible to everyone.
+                              </p>
+                            </div>
+                          </div>
+
+                          <div className="p-3.5 rounded-2xl bg-telegram-surface/80 border border-telegram-border/50 flex items-start gap-3 backdrop-blur-md">
+                            <div className="w-9 h-9 rounded-xl bg-sky-500/15 text-sky-400 border border-sky-500/25 flex items-center justify-center shrink-0">
+                              <Sparkles className="w-5 h-5" />
+                            </div>
+                            <div>
+                              <h4 className="text-xs font-bold text-telegram-text">100% Ad-Free Experience</h4>
+                              <p className="text-[11px] text-telegram-subtext mt-0.5 leading-relaxed">
+                                Pure clean interface with zero third-party banners, popup interstitials, or sponsored delays.
+                              </p>
+                            </div>
+                          </div>
+
+                          <div className="p-3.5 rounded-2xl bg-telegram-surface/80 border border-telegram-border/50 flex items-start gap-3 backdrop-blur-md">
+                            <div className="w-9 h-9 rounded-xl bg-purple-500/15 text-purple-400 border border-purple-500/25 flex items-center justify-center shrink-0">
+                              <Smartphone className="w-5 h-5" />
+                            </div>
+                            <div>
+                              <h4 className="text-xs font-bold text-telegram-text">Permanent Telegram Cloud Binding</h4>
+                              <p className="text-[11px] text-telegram-subtext mt-0.5 leading-relaxed">
+                                Your Pro license automatically activates on any device logged into your Telegram ID.
+                              </p>
+                            </div>
+                          </div>
+                        </div>
+                      </div>
+
+                      {/* ── Help & Contact Developer ── */}
+                      <div className="pt-2 space-y-2">
+                        <button
+                          type="button"
+                          onClick={() => setShowHelp(true)}
+                          className="w-full flex items-center justify-center gap-2 rounded-xl border border-telegram-border/50 bg-telegram-surface/80 px-3 py-2.5 text-xs font-semibold text-telegram-text hover:bg-telegram-hover/30 active:scale-95 transition-all"
+                        >
+                          <HelpCircle className="h-4 w-4 text-telegram-primary" />
+                          Pro License FAQ &amp; Support
+                        </button>
+                        <button
+                          type="button"
+                          onClick={handleContactDeveloper}
+                          className="w-full flex items-center justify-center gap-2 rounded-xl border border-telegram-primary/30 bg-telegram-primary/10 px-3 py-2.5 text-xs font-semibold text-telegram-primary hover:bg-telegram-primary/20 active:scale-95 transition-all"
+                        >
+                          <svg className="h-4 w-4 shrink-0" viewBox="0 0 24 24" fill="currentColor">
+                            <path d="M12 0C5.373 0 0 5.373 0 12s5.373 12 12 12 12-5.373 12-12S18.627 0 12 0zm5.562 8.248-1.97 9.289c-.145.658-.537.818-1.084.508l-3-2.21-1.447 1.394c-.16.16-.295.295-.605.295l.213-3.053 5.56-5.023c.242-.213-.054-.333-.373-.12L7.26 14.4l-2.95-.924c-.643-.204-.657-.643.136-.953l11.526-4.447c.537-.194 1.006.131.59.172z"/>
+                          </svg>
+                          Contact Developer · @Theexposes
+                        </button>
+                      </div>
+                    </section>
+                  );
+                })()}
               </div>
             )}
-          </div>
-        )}
 
         {/* ── Profile Tab ─────────────────────────────────────────────── */}
-        {activeTab === 'profile' && (
+        {activeTab === 'profile' && settingsSubpage === null && (
           <div className="space-y-4 animate-in fade-in slide-in-from-right-2 duration-200 pb-36 sm:pb-40">
 
-            {/* ── Hero Profile Card ── */}
-            <div className="relative rounded-3xl overflow-hidden border border-telegram-border/60 shadow-xl bg-telegram-surface/80 backdrop-blur-xl">
-              {/* ambient gradient backdrops */}
-              <div className="absolute -top-16 -right-16 w-52 h-52 bg-gradient-to-br from-sky-500/20 to-indigo-500/10 rounded-full blur-3xl pointer-events-none" />
-              <div className="absolute -bottom-16 -left-16 w-52 h-52 bg-gradient-to-tr from-purple-500/20 to-pink-500/10 rounded-full blur-3xl pointer-events-none" />
-
-              <div className="relative p-5 space-y-4">
-                {/* Avatar + name row */}
-                <div className="flex items-center gap-4">
-                  <div className="relative shrink-0">
-                    <div className="w-18 h-18 sm:w-20 sm:h-20 rounded-2xl bg-gradient-to-tr from-sky-500 via-indigo-500 to-purple-600 flex items-center justify-center text-white font-black text-2xl sm:text-3xl shadow-xl ring-2 ring-white/20">
-                      {userProfile?.firstName ? userProfile.firstName.charAt(0).toUpperCase() : <User className="w-9 h-9 sm:w-10 sm:h-10" />}
-                    </div>
-                    {userProfile?.isPremium && (
-                      <div className="absolute -bottom-1 -right-1 w-6 h-6 rounded-full bg-amber-500 text-black flex items-center justify-center text-xs font-black shadow-lg ring-2 ring-telegram-surface" title="Telegram Premium">
-                        ★
-                      </div>
-                    )}
-                    {/* online dot */}
-                    {isConnected && (
-                      <span className="absolute -top-1 -right-1 flex h-4 w-4">
-                        <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75" />
-                        <span className="relative inline-flex rounded-full h-4 w-4 bg-emerald-500 ring-2 ring-telegram-surface" />
-                      </span>
-                    )}
+            {/* ── Profile Identity Header Banner ── */}
+            <div className="relative rounded-3xl overflow-hidden border border-telegram-border/60 shadow-xl bg-telegram-surface/80 backdrop-blur-xl p-4.5 sm:p-5">
+              <div className="absolute -top-16 -right-16 w-48 h-48 bg-gradient-to-br from-sky-500/20 to-indigo-500/10 rounded-full blur-3xl pointer-events-none" />
+              <div className="flex items-center gap-4">
+                <div className="relative shrink-0">
+                  <div className="w-16 h-16 sm:w-18 sm:h-18 rounded-2xl bg-gradient-to-tr from-sky-500 via-indigo-500 to-purple-600 flex items-center justify-center text-white font-black text-2xl shadow-xl ring-2 ring-white/20">
+                    {userProfile?.firstName ? userProfile.firstName.charAt(0).toUpperCase() : <User className="w-8 h-8" />}
                   </div>
-
-                  <div className="min-w-0 flex-1">
-                    <h2 className="text-xl font-black text-telegram-text tracking-tight truncate leading-tight">
-                      {userProfile ? `${userProfile.firstName} ${userProfile.lastName || ''}`.trim() : 'Telegram Account'}
-                    </h2>
-                    {userProfile?.username && (
-                      <p className="text-sm font-bold text-telegram-primary truncate mt-0.5">@{userProfile.username}</p>
-                    )}
-                    <div className="flex items-center gap-2 flex-wrap mt-2">
-                      <span className={`inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-[10px] font-bold border ${isConnected ? 'bg-emerald-500/15 text-emerald-400 border-emerald-500/30' : 'bg-red-500/10 text-red-400 border-red-500/20'}`}>
-                        <span className={`w-1.5 h-1.5 rounded-full ${isConnected ? 'bg-emerald-400 animate-pulse' : 'bg-red-400'}`} />
-                        {isConnected ? 'Online · MTProto' : 'Offline'}
-                      </span>
-                      {userProfile?.isPremium && (
-                        <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[10px] font-bold bg-amber-500/15 text-amber-400 border border-amber-500/30">
-                          ★ Premium
-                        </span>
-                      )}
+                  {userProfile?.isPremium && (
+                    <div className="absolute -bottom-1 -right-1 w-5 h-5 rounded-full bg-amber-500 text-black flex items-center justify-center text-[10px] font-black shadow-lg ring-2 ring-telegram-surface" title="Telegram Premium">
+                      ★
                     </div>
-                  </div>
+                  )}
+                  {isConnected && (
+                    <span className="absolute -top-1 -right-1 flex h-3.5 w-3.5">
+                      <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75" />
+                      <span className="relative inline-flex rounded-full h-3.5 w-3.5 bg-emerald-500 ring-2 ring-telegram-surface" />
+                    </span>
+                  )}
                 </div>
 
-                {/* Account details systematic grid */}
-                <div className="rounded-2xl bg-telegram-bg/60 border border-telegram-border/50 divide-y divide-telegram-border/30 overflow-hidden shadow-inner">
-                  {/* User ID */}
-                  <div className="flex items-center justify-between px-3.5 py-2.5 hover:bg-telegram-hover/30 transition-colors">
-                    <div className="flex items-center gap-2.5 text-telegram-subtext">
-                      <div className="w-7 h-7 rounded-lg bg-sky-500/15 text-sky-400 border border-sky-500/20 flex items-center justify-center shrink-0">
-                        <KeyRound className="w-3.5 h-3.5" />
-                      </div>
-                      <span className="text-xs font-semibold text-telegram-subtext">User ID</span>
-                    </div>
-                    <button
-                      type="button"
-                      onClick={() => { void copyToClipboard(String(userProfile?.id ?? '')); toast.success('User ID copied to clipboard'); }}
-                      className="inline-flex items-center gap-1.5 px-2 py-1 rounded-lg bg-telegram-surface/80 hover:bg-telegram-hover active:scale-95 border border-telegram-border/40 font-mono text-xs font-bold text-telegram-text hover:text-telegram-primary transition-all group"
-                      title="Click to copy User ID"
-                    >
-                      <span>{userProfile?.id ?? '—'}</span>
-                      <Copy className="w-3.5 h-3.5 text-telegram-subtext group-hover:text-telegram-primary transition-colors" />
-                    </button>
-                  </div>
-
-                  {/* Phone */}
-                  {userProfile?.phone && (
-                    <div className="flex items-center justify-between px-3.5 py-2.5 hover:bg-telegram-hover/30 transition-colors">
-                      <div className="flex items-center gap-2.5 text-telegram-subtext">
-                        <div className="w-7 h-7 rounded-lg bg-indigo-500/15 text-indigo-400 border border-indigo-500/20 flex items-center justify-center shrink-0">
-                          <Smartphone className="w-3.5 h-3.5" />
-                        </div>
-                        <span className="text-xs font-semibold text-telegram-subtext">Phone</span>
-                      </div>
-                      <button
-                        type="button"
-                        onClick={() => { void copyToClipboard(userProfile.phone || ''); toast.success('Phone number copied to clipboard'); }}
-                        className="inline-flex items-center gap-1.5 px-2 py-1 rounded-lg bg-telegram-surface/80 hover:bg-telegram-hover active:scale-95 border border-telegram-border/40 font-mono text-xs font-bold text-telegram-text hover:text-telegram-primary transition-all group"
-                        title="Click to copy Phone Number"
-                      >
-                        <span>{userProfile.phone.startsWith('+') ? userProfile.phone : `+${userProfile.phone}`}</span>
-                        <Copy className="w-3.5 h-3.5 text-telegram-subtext group-hover:text-telegram-primary transition-colors" />
-                      </button>
-                    </div>
+                <div className="min-w-0 flex-1">
+                  <h2 className="text-lg sm:text-xl font-black text-telegram-text tracking-tight truncate leading-tight">
+                    {userProfile ? `${userProfile.firstName} ${userProfile.lastName || ''}`.trim() : 'Telegram User'}
+                  </h2>
+                  {userProfile?.username ? (
+                    <p className="text-xs font-bold text-telegram-primary truncate mt-0.5">@{userProfile.username}</p>
+                  ) : (
+                    <p className="text-xs text-telegram-subtext truncate mt-0.5">ID: {userProfile?.id ?? '—'}</p>
                   )}
-
-                  {/* Username */}
-                  {userProfile?.username && (
-                    <div className="flex items-center justify-between px-3.5 py-2.5 hover:bg-telegram-hover/30 transition-colors">
-                      <div className="flex items-center gap-2.5 text-telegram-subtext">
-                        <div className="w-7 h-7 rounded-lg bg-purple-500/15 text-purple-400 border border-purple-500/20 flex items-center justify-center shrink-0">
-                          <Globe className="w-3.5 h-3.5" />
-                        </div>
-                        <span className="text-xs font-semibold text-telegram-subtext">Username</span>
-                      </div>
-                      <button
-                        type="button"
-                        onClick={() => { void copyToClipboard(`@${userProfile.username}`); toast.success('Username copied to clipboard'); }}
-                        className="inline-flex items-center gap-1.5 px-2 py-1 rounded-lg bg-telegram-surface/80 hover:bg-telegram-hover active:scale-95 border border-telegram-border/40 text-xs font-bold text-telegram-primary hover:underline transition-all group"
-                        title="Click to copy Username"
-                      >
-                        <span>@{userProfile.username}</span>
-                        <Copy className="w-3.5 h-3.5 text-telegram-subtext group-hover:text-telegram-primary transition-colors" />
-                      </button>
-                    </div>
-                  )}
-
-                  {/* Session */}
-                  <div className="flex items-center justify-between px-3.5 py-2.5 hover:bg-telegram-hover/30 transition-colors">
-                    <div className="flex items-center gap-2.5 text-telegram-subtext">
-                      <div className="w-7 h-7 rounded-lg bg-emerald-500/15 text-emerald-400 border border-emerald-500/20 flex items-center justify-center shrink-0">
-                        <ShieldCheck className="w-3.5 h-3.5" />
-                      </div>
-                      <span className="text-xs font-semibold text-telegram-subtext">Session</span>
-                    </div>
-                    <span className={`inline-flex items-center gap-1.5 text-xs font-bold px-2 py-1 rounded-lg ${isConnected ? 'text-emerald-400 bg-emerald-500/10' : 'text-red-400 bg-red-500/10'}`}>
+                  <div className="flex items-center gap-2 flex-wrap mt-2">
+                    <span className={`inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-[10px] font-bold border ${isConnected ? 'bg-emerald-500/15 text-emerald-400 border-emerald-500/30' : 'bg-red-500/10 text-red-400 border-red-500/20'}`}>
                       <span className={`w-1.5 h-1.5 rounded-full ${isConnected ? 'bg-emerald-400 animate-pulse' : 'bg-red-400'}`} />
-                      {isConnected ? 'MTProto Active' : 'Disconnected'}
+                      {isConnected ? 'Online · MTProto' : 'Offline'}
                     </span>
+                    {userProfile?.isPremium && (
+                      <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[10px] font-bold bg-amber-500/15 text-amber-400 border border-amber-500/30">
+                        ★ Premium
+                      </span>
+                    )}
                   </div>
                 </div>
               </div>
+            </div>
+
+            {/* ── Main Profile Navigation Bars (Account & TG Drive Pro) ── */}
+            <div className="space-y-2.5">
+              {/* Bar 1: Telegram Account & Session Details */}
+              <SettingsMenuCard
+                icon={User}
+                iconBgClass="bg-gradient-to-br from-sky-500/20 to-indigo-500/20"
+                iconBorderClass="border-sky-500/30"
+                iconColorClass="text-sky-400"
+                title="Telegram Account & Session"
+                subtitle={`ID: ${userProfile?.id ?? '—'} · ${userProfile?.phone ? (userProfile.phone.startsWith('+') ? userProfile.phone : '+' + userProfile.phone) : 'Session Active'}`}
+                badge={
+                  <span className={`px-2 py-0.5 rounded-full text-[9px] font-bold border ${isConnected ? 'bg-emerald-500/15 text-emerald-400 border-emerald-500/30' : 'bg-red-500/10 text-red-400 border-red-500/20'}`}>
+                    {isConnected ? '🟢 Online' : '🔴 Offline'}
+                  </span>
+                }
+                onClick={() => openSettingsSubpage('account')}
+              />
+
+              {/* Bar 2: TG Drive Pro & Subscription Plans */}
+              {(() => {
+                const expiry = licenseManager.getExpiryDetails(mobileLicense?.expiresAt ?? null);
+                const isProActive = Boolean(mobileLicense?.isLicensed);
+                const planType = mobileLicense?.planType;
+                const isTrial = planType === 'trial';
+                const isAnnual = planType === 'annual';
+                const isMonthly = planType === 'monthly';
+
+                return (
+                  <div
+                    onClick={() => openSettingsSubpage('pro_plans')}
+                    className="relative overflow-hidden rounded-2xl bg-gradient-to-br from-amber-500/15 via-orange-500/10 to-telegram-surface border border-amber-500/35 p-4 shadow-md backdrop-blur-md cursor-pointer active:scale-[0.98] transition-all group hover:border-amber-500/50"
+                  >
+                    <div className="absolute -top-10 -right-10 w-28 h-28 bg-amber-500/20 rounded-full blur-xl pointer-events-none" />
+                    <div className="relative flex items-center justify-between gap-3">
+                      <div className="flex items-center gap-3 min-w-0">
+                        <div className="w-11 h-11 rounded-xl bg-gradient-to-br from-amber-400 to-orange-500 flex items-center justify-center text-slate-950 font-black shadow-md shadow-amber-500/20 shrink-0 group-hover:scale-105 transition-transform">
+                          <Zap className="w-6 h-6 fill-slate-950" />
+                        </div>
+                        <div className="min-w-0">
+                          <div className="flex items-center gap-2 flex-wrap">
+                            <span className="text-sm font-bold text-telegram-text group-hover:text-amber-400 transition-colors">
+                              TG Drive Pro &amp; Plans
+                            </span>
+                            <span className={`px-2 py-0.5 rounded-full text-[9px] font-black uppercase tracking-wider border ${
+                              isProActive
+                                ? isTrial
+                                  ? 'bg-amber-500/20 text-amber-400 border-amber-500/30'
+                                  : 'bg-emerald-500/20 text-emerald-400 border-emerald-500/30'
+                                : 'bg-amber-500/20 text-amber-400 border-amber-500/30 animate-pulse'
+                            }`}>
+                              {isProActive ? (isTrial ? '🎁 Free Trial' : isAnnual ? '🌟 Annual' : isMonthly ? '📅 Monthly' : '⚡ Lifetime') : '🚀 Upgrade'}
+                            </span>
+                          </div>
+                          <p className="text-[11px] text-telegram-subtext mt-0.5 truncate">
+                            {isProActive
+                              ? (expiry.isLifetime ? 'Lifetime Access · VIP Features Active' : `Valid until ${expiry.formattedDate} · Tap to view`)
+                              : 'Unlock Turbo Speed, Ad-Free & Unlimited Downloads'}
+                          </p>
+                        </div>
+                      </div>
+                      <ChevronRight className="w-5 h-5 text-telegram-subtext group-hover:text-amber-400 group-hover:translate-x-0.5 transition-all shrink-0" />
+                    </div>
+                  </div>
+                );
+              })()}
             </div>
 
             {/* ── Affiliate & Partner Program: Refer & Earn and Earnings & Withdrawals ── */}
@@ -5246,28 +6081,6 @@ export default function MobileDashboard({ onLogout }: { onLogout?: () => void })
                     </div>
                   </div>
                 </div>
-              </div>
-            </div>
-
-            {/* ── Danger Zone: Logout ── */}
-            <div className="space-y-2.5">
-              <div className="flex items-center gap-2 px-1">
-                <LogOut className="w-3.5 h-3.5 text-red-400" />
-                <span className="text-[11px] font-bold uppercase tracking-wider text-red-400/90">Account Actions</span>
-              </div>
-
-              <div className="rounded-2xl bg-red-500/5 border border-red-500/20 p-4 shadow-sm backdrop-blur-md space-y-3">
-                <p className="text-[11px] text-telegram-subtext leading-relaxed">
-                  Logging out will safely terminate your local session and clear encrypted cache from this device. All files remain securely preserved on Telegram.
-                </p>
-                <button
-                  type="button"
-                  onClick={handleLogout}
-                  className="w-full flex items-center justify-center gap-2 py-3.5 rounded-xl bg-red-500/15 hover:bg-red-500/25 active:bg-red-500/35 text-red-400 border border-red-500/30 font-bold text-xs active:scale-[0.98] transition-all duration-200 shadow-sm"
-                >
-                  <LogOut className="w-4 h-4" />
-                  {t('common.logout')}
-                </button>
               </div>
             </div>
 
@@ -5639,6 +6452,7 @@ export default function MobileDashboard({ onLogout }: { onLogout?: () => void })
         <PaywallGateModal
           isOpen={showProUpgradeModal}
           isCompulsory={true}
+          expiredReason={expiredAlertText}
           telegramAccount={{
             userId: userProfile?.id,
             phoneNumber: userProfile?.phone,
@@ -5647,8 +6461,10 @@ export default function MobileDashboard({ onLogout }: { onLogout?: () => void })
             username: userProfile?.username,
           }}
           onLogout={handleLogout}
-          onActivated={async () => {
+          onActivated={async (lic) => {
+            setMobileLicense(lic);
             setShowProUpgradeModal(false);
+            setExpiredAlertText(null);
             await refreshStatus();
             toast.success('Telegram Drive Pro activated successfully!');
           }}
@@ -6251,6 +7067,93 @@ export default function MobileDashboard({ onLogout }: { onLogout?: () => void })
                 Close
               </button>
             </div>
+          </div>
+        </div>
+      )}
+
+      {/* Manual License Key Entry Modal */}
+      {showManualKeyModal && (
+        <div
+          className="fixed inset-0 z-[150] flex items-center justify-center bg-black/75 backdrop-blur-xs p-4 animate-fade-in"
+          onClick={() => setShowManualKeyModal(false)}
+        >
+          <div
+            className="w-full max-w-sm rounded-3xl border border-telegram-border/60 bg-telegram-surface p-5 shadow-2xl space-y-4 animate-scale-up"
+            onClick={e => e.stopPropagation()}
+          >
+            <div className="flex items-center justify-between">
+              <div className="flex items-center gap-3">
+                <div className="w-10 h-10 rounded-2xl bg-amber-500/20 text-amber-400 flex items-center justify-center shadow-md">
+                  <KeyRound className="w-5 h-5" />
+                </div>
+                <div>
+                  <h3 className="text-sm font-bold text-telegram-text">Activate License Key</h3>
+                  <p className="text-xs text-telegram-subtext">Permanently syncs to this Telegram account</p>
+                </div>
+              </div>
+              <button
+                type="button"
+                onClick={() => setShowManualKeyModal(false)}
+                className="rounded-full p-1.5 text-telegram-subtext hover:text-telegram-text hover:bg-telegram-hover/40"
+              >
+                <X className="w-4 h-4" />
+              </button>
+            </div>
+
+            <form onSubmit={handleActivateMobileKey} className="space-y-3">
+              <div>
+                <label className="text-xs font-semibold text-telegram-subtext block mb-1">
+                  License Number / Key
+                </label>
+                <input
+                  type="text"
+                  value={manualLicenseKey}
+                  onChange={(e) => setManualLicenseKey(e.target.value)}
+                  placeholder="TG-PRO-XXXX-XXXX"
+                  className="w-full px-3.5 py-2.5 rounded-xl bg-telegram-bg/80 border border-telegram-border/60 text-xs font-mono text-telegram-text placeholder-telegram-subtext/60 focus:outline-none focus:border-amber-500 uppercase"
+                  autoFocus
+                />
+              </div>
+
+              {userProfile && (
+                <div className="p-2.5 rounded-xl bg-telegram-bg/50 border border-telegram-border/30 text-[11px] text-telegram-subtext space-y-1">
+                  <div className="flex justify-between">
+                    <span>Telegram ID:</span>
+                    <span className="font-mono font-bold text-telegram-text">{userProfile.id}</span>
+                  </div>
+                  {userProfile.phone && (
+                    <div className="flex justify-between">
+                      <span>Phone:</span>
+                      <span className="font-mono font-bold text-telegram-text">{userProfile.phone}</span>
+                    </div>
+                  )}
+                </div>
+              )}
+
+              <div className="pt-2 flex gap-2">
+                <button
+                  type="button"
+                  onClick={() => setShowManualKeyModal(false)}
+                  className="flex-1 py-2.5 rounded-xl border border-telegram-border bg-telegram-hover/30 text-telegram-text font-semibold text-xs active:scale-95 transition"
+                >
+                  Cancel
+                </button>
+                <button
+                  type="submit"
+                  disabled={isActivatingManualKey || !manualLicenseKey.trim()}
+                  className="flex-1 py-2.5 rounded-xl bg-gradient-to-r from-amber-500 to-orange-500 hover:brightness-110 text-slate-950 font-bold text-xs disabled:opacity-50 active:scale-95 transition flex items-center justify-center gap-1.5"
+                >
+                  {isActivatingManualKey ? (
+                    <>
+                      <RefreshCw className="w-3.5 h-3.5 animate-spin" />
+                      <span>Activating…</span>
+                    </>
+                  ) : (
+                    <span>Activate Key</span>
+                  )}
+                </button>
+              </div>
+            </form>
           </div>
         </div>
       )}

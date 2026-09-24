@@ -74,6 +74,7 @@ export class LicenseManager {
           // Check expiration if time-limited
           if (parsed.expiresAt && parsed.expiresAt < Math.floor(Date.now() / 1000)) {
             parsed.isLicensed = false;
+            localStorage.setItem(STORAGE_KEY_LICENSE, JSON.stringify(parsed));
           }
           this.currentLicense = parsed;
           return parsed;
@@ -423,6 +424,76 @@ export class LicenseManager {
     localStorage.removeItem(STORAGE_KEY_LICENSE);
     this.currentLicense = null;
     return true;
+  }
+
+  // Calculates human-readable time remaining and formatted expiration date
+  public getExpiryDetails(expiresAt: number | null): {
+    isLifetime: boolean;
+    isExpired: boolean;
+    formattedDate: string;
+    remainingDays: number;
+    remainingHours: number;
+    remainingMinutes: number;
+    countdownText: string;
+  } {
+    if (!expiresAt) {
+      return {
+        isLifetime: true,
+        isExpired: false,
+        formattedDate: 'Never (Lifetime Access)',
+        remainingDays: 99999,
+        remainingHours: 99999,
+        remainingMinutes: 99999,
+        countdownText: 'Lifetime Access',
+      };
+    }
+
+    const now = Math.floor(Date.now() / 1000);
+    const diff = expiresAt - now;
+
+    const date = new Date(expiresAt * 1000);
+    const formattedDate = date.toLocaleDateString(undefined, {
+      day: 'numeric',
+      month: 'short',
+      year: 'numeric',
+      hour: '2-digit',
+      minute: '2-digit',
+    });
+
+    if (diff <= 0) {
+      return {
+        isLifetime: false,
+        isExpired: true,
+        formattedDate,
+        remainingDays: 0,
+        remainingHours: 0,
+        remainingMinutes: 0,
+        countdownText: 'Expired',
+      };
+    }
+
+    const days = Math.floor(diff / 86400);
+    const hours = Math.floor((diff % 86400) / 3600);
+    const minutes = Math.floor((diff % 3600) / 60);
+
+    let countdownText = '';
+    if (days > 0) {
+      countdownText = `${days}d ${hours}h left`;
+    } else if (hours > 0) {
+      countdownText = `${hours}h ${minutes}m left`;
+    } else {
+      countdownText = `${Math.max(1, minutes)}m left`;
+    }
+
+    return {
+      isLifetime: false,
+      isExpired: false,
+      formattedDate,
+      remainingDays: days,
+      remainingHours: hours,
+      remainingMinutes: minutes,
+      countdownText,
+    };
   }
 }
 

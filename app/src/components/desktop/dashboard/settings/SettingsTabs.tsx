@@ -14,6 +14,7 @@ import {
   uploadSettingsSync,
   type SettingsSyncStatus,
 } from '../../../../services/settingsSync';
+import { licenseManager, type LicenseInfo } from '../../../../services/licenseManager';
 import i18n from '../../../../i18n';
 
 const tabMotion = {
@@ -183,7 +184,7 @@ function SettingsSyncSection({
 }
 
 export function SupporterSettingsSection() {
-  const [license, setLicense] = useState<{ isLicensed: boolean; licenseKey: string | null; planType: string | null; hardwareId: string } | null>(null);
+  const [license, setLicense] = useState<LicenseInfo | null>(null);
   const [telegramUser, setTelegramUser] = useState<{ id: number; firstName: string; phone?: string | null } | null>(null);
   const [syncing, setSyncing] = useState(false);
   const [manualKey, setManualKey] = useState('');
@@ -248,10 +249,16 @@ export function SupporterSettingsSection() {
     setActivating(true);
     try {
       const m = await import('../../../../services/licenseManager');
-      const res = await m.licenseManager.activateLicense(manualKey.trim());
+      const res = await m.licenseManager.activateLicense(
+        manualKey.trim(),
+        undefined,
+        undefined,
+        telegramUser?.id,
+        telegramUser?.phone
+      );
       if (res.success && res.license) {
         setLicense(res.license);
-        toast.success('License activated successfully!');
+        toast.success('License activated & synced with your Telegram account!');
         setShowManual(false);
       } else {
         toast.error(res.message || 'Invalid license key.');
@@ -264,6 +271,7 @@ export function SupporterSettingsSection() {
   };
 
   const isPro = Boolean(license?.isLicensed);
+  const expiry = licenseManager.getExpiryDetails(license?.expiresAt ?? null);
   const checkoutUrl = (() => {
     const base = 'https://tg-drive-license-service.jupiterbania472.workers.dev';
     const params = new URLSearchParams();
@@ -289,7 +297,7 @@ export function SupporterSettingsSection() {
         </div>
         {isPro ? (
           <span className="inline-flex items-center gap-1 rounded-full bg-emerald-500/10 border border-emerald-500/30 px-3 py-1 text-[11px] font-bold text-emerald-400">
-            ✓ PRO ACTIVE
+            ✓ {license?.planType === 'trial' ? 'TRIAL ACTIVE' : 'PRO ACTIVE'}
           </span>
         ) : (
           <span className="inline-flex items-center gap-1 rounded-full bg-slate-500/10 border border-slate-500/30 px-3 py-1 text-[11px] font-medium text-app-text-secondary">
@@ -299,19 +307,48 @@ export function SupporterSettingsSection() {
       </div>
 
       {isPro ? (
-        <div className="space-y-2 rounded-lg bg-emerald-500/5 border border-emerald-500/20 p-3.5 text-xs text-app-text-secondary">
-          <div className="flex justify-between">
+        <div className="space-y-2.5 rounded-lg bg-emerald-500/5 border border-emerald-500/20 p-3.5 text-xs text-app-text-secondary">
+          <div className="flex justify-between items-center">
             <span>License Plan:</span>
-            <span className="capitalize font-bold text-emerald-400">{license?.planType || 'Lifetime Pro'}</span>
+            <span className="capitalize font-bold text-emerald-400">
+              {license?.planType === 'trial' ? '🎁 Free Trial (Active)' : license?.planType === 'annual' ? '🌟 1-Year Annual Pass' : license?.planType === 'monthly' ? '📅 1-Month Pass' : '⚡ Lifetime Pro'}
+            </span>
           </div>
-          <div className="flex justify-between">
-            <span>Multi-Device Access:</span>
-            <span className="font-semibold text-app-text">Unlimited for this Telegram Account</span>
+          <div className="flex justify-between items-center">
+            <span>Plan Expiration:</span>
+            <span className={`font-semibold ${expiry.isExpired ? 'text-red-400' : expiry.isLifetime ? 'text-emerald-400' : 'text-amber-400'}`}>
+              {expiry.formattedDate}
+            </span>
           </div>
-          <div className="flex justify-between">
-            <span>Ad-Free Experience:</span>
+          {!expiry.isLifetime && (
+            <div className="flex justify-between items-center">
+              <span>Time Remaining:</span>
+              <span className={`font-bold px-2 py-0.5 rounded text-[11px] ${expiry.isExpired ? 'bg-red-500/20 text-red-400' : 'bg-amber-500/20 text-amber-400 border border-amber-500/30'}`}>
+                ⏳ {expiry.countdownText}
+              </span>
+            </div>
+          )}
+          <div className="flex justify-between items-center">
+            <span>Telegram Account Sync:</span>
+            <span className="font-semibold text-emerald-400">✓ Permanently Synced</span>
+          </div>
+          <div className="flex justify-between items-center">
+            <span>Ad-Free Cloud Storage:</span>
             <span className="font-semibold text-emerald-400">Active (All Ads Blocked)</span>
           </div>
+          {license?.planType === 'trial' && (
+            <div className="pt-2 border-t border-emerald-500/20 flex items-center justify-between">
+              <span className="text-[11px] text-amber-300">Enjoying the trial? Get Lifetime Pro:</span>
+              <a
+                href={checkoutUrl}
+                target="_blank"
+                rel="noreferrer"
+                className="px-3 py-1.5 rounded-lg bg-gradient-to-r from-amber-500 to-orange-500 text-slate-950 font-bold text-[11px] shadow-sm hover:brightness-110 transition-all"
+              >
+                🚀 Upgrade to Lifetime
+              </a>
+            </div>
+          )}
         </div>
       ) : (
         <div className="space-y-3 rounded-lg bg-amber-500/5 border border-amber-500/20 p-3.5 text-xs">

@@ -27,6 +27,15 @@ vi.mock('../../src/services/licenseManager', () => ({
       },
     }),
     deactivateLicense: vi.fn().mockResolvedValue(true),
+    getExpiryDetails: vi.fn().mockReturnValue({
+      isLifetime: true,
+      isExpired: false,
+      formattedDate: 'Never (Lifetime Access)',
+      remainingDays: 99999,
+      remainingHours: 99999,
+      remainingMinutes: 99999,
+      countdownText: 'Lifetime Access',
+    }),
   },
 }));
 
@@ -39,7 +48,7 @@ describe('SupporterSettingsSection', () => {
     render(<SupporterSettingsSection />);
 
     expect(await screen.findByText('✓ PRO ACTIVE')).toBeTruthy();
-    expect(await screen.findByText('lifetime')).toBeTruthy();
-    expect(await screen.findByText('Unlimited for this Telegram Account')).toBeTruthy();
+    expect(await screen.findByText(/Lifetime Pro/i)).toBeTruthy();
+    expect(await screen.findByText(/Telegram ID: 12345678/i)).toBeTruthy();
   });
 });

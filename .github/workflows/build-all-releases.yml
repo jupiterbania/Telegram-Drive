@@ -1,0 +1,419 @@
+name: "Build All Devices Release (PC, Android, iOS, macOS, Linux)"
+
+on:
+  workflow_dispatch:
+    inputs:
+      release_tag:
+        description: 'Target Release Tag (e.g. v1.2.0)'
+        required: false
+        default: 'v1.2.0'
+      clean_old_assets:
+        description: 'Delete old assets from the release before uploading new ones?'
+        type: boolean
+        required: false
+        default: true
+  push:
+    tags:
+      - 'v*'
+
+permissions:
+  contents: write
+
+jobs:
+  clean-release:
+    name: Prepare / Clean GitHub Release
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Clean old release assets if requested
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          TAG_NAME: ${{ github.event.inputs.release_tag || github.ref_name }}
+          CLEAN: ${{ github.event.inputs.clean_old_assets != 'false' }}
+        run: |
+          echo "Target Release Tag: ${TAG_NAME}"
+          if ! gh release view "${TAG_NAME}" >/dev/null 2>&1; then
+            echo "Release ${TAG_NAME} not found. Creating draft/published release..."
+            gh release create "${TAG_NAME}" --title "Telegram Drive ${TAG_NAME}" --notes "Release ${TAG_NAME} build across PC, Android, iOS, macOS, and Linux."
+          fi
+
+          if [ "$CLEAN" = "true" ]; then
+            echo "Fetching and removing previous assets for ${TAG_NAME}..."
+            ASSETS=$(gh release view "${TAG_NAME}" --json assets --jq '.assets.[].name' || true)
+            for asset in $ASSETS; do
+              echo "Deleting old asset: $asset"
+              gh release delete-asset "${TAG_NAME}" "$asset" --yes || true
+            done
+          fi
+
+  build-windows:
+    name: Build Windows PC (Setup & Portable)
+    needs: clean-release
+    runs-on: windows-latest
+    timeout-minutes: 90
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: app/package-lock.json
+
+      - name: Setup Rust toolchain
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Install dependencies
+        working-directory: app
+        run: npm ci
+
+      - name: Build frontend
+        working-directory: app
+        run: npm run build
+
+      - name: Prepare Windows runtime prerequisite
+        shell: pwsh
+        run: ./app/scripts/prepare-windows-runtime.ps1
+
+      - name: Build Windows Tauri App (NSIS Installer)
+        working-directory: app
+        run: |
+          npm run tauri build -- --bundles nsis
+
+      - name: Package Windows Artifacts
+        shell: pwsh
+        working-directory: app
+        run: |
+          New-Item -ItemType Directory -Force -Path windows-artifacts
+          $tag = "${{ github.event.inputs.release_tag || github.ref_name }}"
+          
+          # Find NSIS installer
+          $nsis = Get-ChildItem -Path "src-tauri/target/release/bundle/nsis" -Filter "*.exe" -Recurse | Select-Object -First 1
+          if ($nsis) {
+            Copy-Item $nsis.FullName -Destination "windows-artifacts/TG-Drive-$tag-Windows-x64-Setup.exe"
+            Write-Host "Found NSIS installer: $($nsis.FullName)"
+          }
+          
+          # Find Standalone Portable Executable
+          $mainExe = "src-tauri/target/release/telegram-drive.exe"
+          if (Test-Path $mainExe) {
+            Copy-Item $mainExe -Destination "windows-artifacts/TG-Drive-$tag-Windows-x64-Portable.exe"
+            Write-Host "Found standalone executable: $mainExe"
+          }
+
+          Get-ChildItem windows-artifacts
+
+      - name: Upload Windows Artifacts to Release
+        working-directory: app
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          TAG_NAME: ${{ github.event.inputs.release_tag || github.ref_name }}
+        run: |
+          gh release upload "${{ env.TAG_NAME }}" windows-artifacts/* --clobber
+
+  build-android:
+    name: Build Android (APK)
+    needs: clean-release
+    runs-on: ubuntu-latest
+    timeout-minutes: 120
+    env:
+      NDK_VERSION: 30.0.14904198
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+          cache-dependency-path: app/package-lock.json
+
+      - name: Setup Java
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - name: Setup Android SDK
+        uses: android-actions/setup-android@v4
+
+      - name: Setup Rust toolchain
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: aarch64-linux-android,armv7-linux-androideabi,i686-linux-android,x86_64-linux-android
+
+      - name: Install Android SDK and NDK components
+        run: |
+          sdkmanager \
+            'platforms;android-36' \
+            'build-tools;36.0.0' \
+            "ndk;${NDK_VERSION}"
+          echo "NDK_HOME=$ANDROID_HOME/ndk/$NDK_VERSION" >> "$GITHUB_ENV"
+          echo "ANDROID_NDK_HOME=$ANDROID_HOME/ndk/$NDK_VERSION" >> "$GITHUB_ENV"
+
+      - name: Install dependencies
+        working-directory: app
+        run: npm ci
+
+      - name: Build frontend
+        working-directory: app
+        run: npm run build
+
+      - name: Initialize & Build Android Release APK
+        working-directory: app
+        run: |
+          npm run tauri android init || true
+          npm run tauri android build || true
+
+      - name: Package Android Artifacts
+        working-directory: app
+        run: |
+          mkdir -p android-artifacts
+          TAG="${{ github.event.inputs.release_tag || github.ref_name }}"
+          
+          # Find all APKs
+          find src-tauri/gen/android/app/build/outputs/apk -name "*arm64*.apk" -exec cp {} "android-artifacts/TG-Drive-${TAG}-Android-ARM64.apk" \; || true
+          find src-tauri/gen/android/app/build/outputs/apk -name "*universal*.apk" -exec cp {} "android-artifacts/TG-Drive-${TAG}-Android-Universal.apk" \; || true
+          
+          # If specific naming wasn't matched, pick the largest release apk
+          if [ -z "$(ls -A android-artifacts)" ]; then
+            FALLBACK_APK=$(find src-tauri/gen/android -name "*.apk" | head -n 1)
+            if [ -n "$FALLBACK_APK" ]; then
+              cp "$FALLBACK_APK" "android-artifacts/TG-Drive-${TAG}-Android.apk"
+            fi
+          fi
+          
+          ls -la android-artifacts/
+
+      - name: Upload Android Artifacts to Release
+        working-directory: app
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          TAG_NAME: ${{ github.event.inputs.release_tag || github.ref_name }}
+        run: |
+          if [ -d android-artifacts ] && [ "$(ls -A android-artifacts)" ]; then
+            gh release upload "${TAG_NAME}" android-artifacts/* --clobber
+          fi
+
+  build-macos:
+    name: Build macOS (${{ matrix.name }})
+    needs: clean-release
+    runs-on: macos-latest
+    timeout-minutes: 90
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - name: Apple Silicon ARM64
+            target: aarch64-apple-darwin
+            artifact_name: macOS-Apple-Silicon-ARM64
+          - name: Intel x64
+            target: x86_64-apple-darwin
+            artifact_name: macOS-Intel-x64
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: app/package-lock.json
+
+      - name: Setup Rust toolchain
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: ${{ matrix.target }}
+
+      - name: Install dependencies
+        working-directory: app
+        run: npm ci
+
+      - name: Build frontend
+        working-directory: app
+        run: npm run build
+
+      - name: Build macOS DMG Bundle
+        working-directory: app
+        run: |
+          npm run tauri build -- --target ${{ matrix.target }} --bundles dmg || true
+
+      - name: Package macOS release artifacts
+        working-directory: app
+        run: |
+          mkdir -p macos-artifacts
+          TAG="${{ github.event.inputs.release_tag || github.ref_name }}"
+          find "src-tauri/target/${{ matrix.target }}/release/bundle/dmg" -name "*.dmg" -exec cp {} "macos-artifacts/TG-Drive-${TAG}-${{ matrix.artifact_name }}.dmg" \; || true
+          ls -la macos-artifacts/
+
+      - name: Upload macOS artifacts to Release
+        working-directory: app
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          TAG_NAME: ${{ github.event.inputs.release_tag || github.ref_name }}
+        run: |
+          if [ -d macos-artifacts ] && [ "$(ls -A macos-artifacts)" ]; then
+            gh release upload "${TAG_NAME}" macos-artifacts/* --clobber
+          fi
+
+  build-ios:
+    name: Build iOS Package (IPA & Simulator)
+    needs: clean-release
+    runs-on: macos-latest
+    timeout-minutes: 90
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: app/package-lock.json
+
+      - name: Setup Rust toolchain
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: aarch64-apple-ios,aarch64-apple-ios-sim
+
+      - name: Install dependencies
+        working-directory: app
+        run: npm ci
+
+      - name: Build frontend
+        working-directory: app
+        run: npm run build
+
+      - name: Initialize Tauri iOS project
+        working-directory: app
+        run: |
+          npm run tauri ios init
+
+      - name: Build iOS using Tauri and Xcode
+        working-directory: app
+        run: |
+          npm run tauri ios build -- --target aarch64 --ci || true
+          if [ -d "src-tauri/gen/apple" ]; then
+            cd src-tauri/gen/apple
+            if [ -d "app_iOS.xcworkspace" ]; then
+              xcodebuild -workspace app_iOS.xcworkspace \
+                -scheme app_iOS \
+                -configuration Release \
+                -sdk iphoneos \
+                -derivedDataPath derivedData \
+                CODE_SIGNING_ALLOWED=NO \
+                CODE_SIGNING_REQUIRED=NO \
+                CODE_SIGN_IDENTITY="" \
+                PROVISIONING_PROFILE_SPECIFIER="" \
+                build || true
+            else
+              xcodebuild -project app.xcodeproj \
+                -scheme app_iOS \
+                -configuration Release \
+                -sdk iphoneos \
+                -derivedDataPath derivedData \
+                CODE_SIGNING_ALLOWED=NO \
+                CODE_SIGNING_REQUIRED=NO \
+                CODE_SIGN_IDENTITY="" \
+                PROVISIONING_PROFILE_SPECIFIER="" \
+                build || true
+            fi
+          fi
+
+      - name: Package iOS IPA & Simulator Artifacts
+        working-directory: app
+        run: |
+          mkdir -p ios-artifacts
+          TAG="${{ github.event.inputs.release_tag || github.ref_name }}"
+          APP_PATH=$(find src-tauri -name "*.app" | head -n 1)
+          if [ -n "$APP_PATH" ]; then
+            echo "Found iOS App at: $APP_PATH"
+            mkdir -p Payload
+            cp -r "$APP_PATH" Payload/
+            zip -r "ios-artifacts/TG-Drive-${TAG}-iOS-Direct-Install.ipa" Payload
+            zip -r "ios-artifacts/TG-Drive-${TAG}-iOS-Simulator-App.zip" "$APP_PATH"
+          fi
+          ls -la ios-artifacts/
+
+      - name: Upload iOS artifacts to Release
+        working-directory: app
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          TAG_NAME: ${{ github.event.inputs.release_tag || github.ref_name }}
+        run: |
+          if [ -d ios-artifacts ] && [ "$(ls -A ios-artifacts)" ]; then
+            gh release upload "${TAG_NAME}" ios-artifacts/* --clobber
+          fi
+
+  build-linux:
+    name: Build Linux PC (Debian & AppImage)
+    needs: clean-release
+    runs-on: ubuntu-22.04
+    timeout-minutes: 60
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: app/package-lock.json
+
+      - name: Setup Rust toolchain
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Install Linux build dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y libwebkit2gtk-4.1-dev \
+            build-essential \
+            curl \
+            wget \
+            file \
+            libssl-dev \
+            libdbus-1-dev \
+            libgtk-3-dev \
+            libayatana-appindicator3-dev \
+            librsvg2-dev \
+            libfuse2
+
+      - name: Install dependencies
+        working-directory: app
+        run: npm ci
+
+      - name: Build frontend
+        working-directory: app
+        run: npm run build
+
+      - name: Build Linux Tauri App (deb, appimage)
+        working-directory: app
+        run: |
+          npm run tauri build -- --bundles deb,appimage || true
+
+      - name: Package Linux Artifacts
+        working-directory: app
+        run: |
+          mkdir -p linux-artifacts
+          TAG="${{ github.event.inputs.release_tag || github.ref_name }}"
+          find src-tauri/target/release/bundle/deb -name "*.deb" -exec cp {} "linux-artifacts/TG-Drive-${TAG}-Linux-x64.deb" \; || true
+          find src-tauri/target/release/bundle/appimage -name "*.AppImage" -exec cp {} "linux-artifacts/TG-Drive-${TAG}-Linux-x64.AppImage" \; || true
+          ls -la linux-artifacts/
+
+      - name: Upload Linux Artifacts to Release
+        working-directory: app
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          TAG_NAME: ${{ github.event.inputs.release_tag || github.ref_name }}
+        run: |
+          if [ -d linux-artifacts ] && [ "$(ls -A linux-artifacts)" ]; then
+            gh release upload "${TAG_NAME}" linux-artifacts/* --clobber
+          fi

@@ -484,7 +484,7 @@ export async function sendTrialWelcomeEmail(
                   &#10003; 100% Ad-Free Experience<br>
                   &#10003; Unlimited Cloud Storage via Telegram<br>
                   &#10003; High-Speed Multi-Part Engine<br>
-                  &#10003; Up to 2 Devices Simultaneously<br>
+                  &#10003; Multi-Device Access (Linked to Telegram)<br>
                   &#10003; PDF Supporter Certificate (Attached)
                 </div>
               </div>
