@@ -1,0 +1,116 @@
+name: "Build Windows PC Release"
+
+on:
+  workflow_dispatch:
+    inputs:
+      release_tag:
+        description: 'Target Release Tag (e.g. v1.2.0)'
+        required: false
+        default: 'v1.2.0'
+
+permissions:
+  contents: write
+
+jobs:
+  build-windows:
+    name: Build Windows PC (Setup & Portable)
+    runs-on: windows-latest
+    timeout-minutes: 90
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: app/package-lock.json
+
+      - name: Setup Rust toolchain
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Install dependencies
+        working-directory: app
+        run: npm ci
+
+      - name: Build frontend
+        working-directory: app
+        run: npm run build
+
+      - name: Prepare Windows runtime prerequisite
+        shell: pwsh
+        run: ./app/scripts/prepare-windows-runtime.ps1
+
+      - name: Prepare Tauri signing key if provided
+        working-directory: app
+        shell: node {0}
+        env:
+          KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
+        run: |
+          const fs = require('fs');
+          const key = (process.env.KEY || '').trim();
+          if (key) {
+            const b64 = key.startsWith('untrusted comment:')
+              ? Buffer.from(key).toString('base64')
+              : key;
+            fs.appendFileSync(process.env.GITHUB_ENV, `TAURI_SIGNING_PRIVATE_KEY=${b64}\n`);
+          }
+
+      - name: Build Windows Tauri App (NSIS Installer & Executable)
+        working-directory: app
+        env:
+          TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
+        run: |
+          npm run tauri build -- --bundles nsis || true
+
+      - name: Package Windows Artifacts
+        shell: pwsh
+        working-directory: app
+        run: |
+          New-Item -ItemType Directory -Force -Path windows-artifacts
+          $tag = "${{ github.event.inputs.release_tag || 'v1.2.0' }}"
+          
+          # Find NSIS installer
+          $nsis = Get-ChildItem -Path "src-tauri/target/release/bundle/nsis" -Filter "*.exe" -Recurse | Select-Object -First 1
+          if ($nsis) {
+            Copy-Item $nsis.FullName -Destination "windows-artifacts/TG-Drive-$tag-Windows-x64-Setup.exe"
+            Write-Host "Found NSIS installer: $($nsis.FullName)"
+          } else {
+            Write-Error "NSIS setup.exe not found!"
+          }
+          
+          # Find Standalone Portable Executable (app.exe or tg-drive.exe or TG Drive.exe)
+          $possibleExes = @(
+            "src-tauri/target/release/app.exe",
+            "src-tauri/target/release/TG Drive.exe",
+            "src-tauri/target/release/telegram-drive.exe"
+          )
+          $foundExe = $null
+          foreach ($p in $possibleExes) {
+            if (Test-Path $p) {
+              $foundExe = $p
+              break
+            }
+          }
+          if ($foundExe) {
+            Copy-Item $foundExe -Destination "windows-artifacts/TG-Drive-$tag-Windows-x64-Portable.exe"
+            Write-Host "Found standalone executable: $foundExe"
+          } else {
+            Write-Host "Searching for any .exe in release folder..."
+            $anyExe = Get-ChildItem -Path "src-tauri/target/release" -Filter "*.exe" -File | Select-Object -First 1
+            if ($anyExe) {
+              Copy-Item $anyExe.FullName -Destination "windows-artifacts/TG-Drive-$tag-Windows-x64-Portable.exe"
+              Write-Host "Copied fallback exe: $($anyExe.FullName)"
+            }
+          }
+
+          Get-ChildItem windows-artifacts
+
+      - name: Upload Windows Artifacts to Release
+        working-directory: app
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          TAG_NAME: ${{ github.event.inputs.release_tag || 'v1.2.0' }}
+        run: |
+          gh release upload "${{ env.TAG_NAME }}" windows-artifacts/* --clobber

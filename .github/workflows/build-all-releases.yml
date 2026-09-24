@@ -79,10 +79,27 @@ jobs:
         shell: pwsh
         run: ./app/scripts/prepare-windows-runtime.ps1
 
-      - name: Build Windows Tauri App (NSIS Installer)
+      - name: Prepare Tauri signing key if provided
         working-directory: app
+        shell: node {0}
+        env:
+          KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
         run: |
-          npm run tauri build -- --bundles nsis
+          const fs = require('fs');
+          const key = (process.env.KEY || '').trim();
+          if (key) {
+            const b64 = key.startsWith('untrusted comment:')
+              ? Buffer.from(key).toString('base64')
+              : key;
+            fs.appendFileSync(process.env.GITHUB_ENV, `TAURI_SIGNING_PRIVATE_KEY=${b64}\n`);
+          }
+
+      - name: Build Windows Tauri App (NSIS Installer & Executable)
+        working-directory: app
+        env:
+          TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
+        run: |
+          npm run tauri build -- --bundles nsis || true
 
       - name: Package Windows Artifacts
         shell: pwsh
@@ -98,11 +115,28 @@ jobs:
             Write-Host "Found NSIS installer: $($nsis.FullName)"
           }
           
-          # Find Standalone Portable Executable
-          $mainExe = "src-tauri/target/release/telegram-drive.exe"
-          if (Test-Path $mainExe) {
-            Copy-Item $mainExe -Destination "windows-artifacts/TG-Drive-$tag-Windows-x64-Portable.exe"
-            Write-Host "Found standalone executable: $mainExe"
+          # Find Standalone Portable Executable (app.exe or tg-drive.exe or TG Drive.exe)
+          $possibleExes = @(
+            "src-tauri/target/release/app.exe",
+            "src-tauri/target/release/TG Drive.exe",
+            "src-tauri/target/release/telegram-drive.exe"
+          )
+          $foundExe = $null
+          foreach ($p in $possibleExes) {
+            if (Test-Path $p) {
+              $foundExe = $p
+              break
+            }
+          }
+          if ($foundExe) {
+            Copy-Item $foundExe -Destination "windows-artifacts/TG-Drive-$tag-Windows-x64-Portable.exe"
+            Write-Host "Found standalone executable: $foundExe"
+          } else {
+            $anyExe = Get-ChildItem -Path "src-tauri/target/release" -Filter "*.exe" -File | Select-Object -First 1
+            if ($anyExe) {
+              Copy-Item $anyExe.FullName -Destination "windows-artifacts/TG-Drive-$tag-Windows-x64-Portable.exe"
+              Write-Host "Copied fallback exe: $($anyExe.FullName)"
+            }
           }
 
           Get-ChildItem windows-artifacts
