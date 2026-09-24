@@ -97,6 +97,25 @@ export class LicenseManager {
     return defaultInfo;
   }
 
+  public detectPlatform(): string {
+    if (typeof navigator === 'undefined') return 'windows';
+    const ua = navigator.userAgent.toLowerCase();
+    if (/android/i.test(ua)) return 'android';
+    if (/iphone|ipad|ipod/i.test(ua)) return 'ios';
+    if (/macintosh|mac os x/i.test(ua)) return 'macos';
+    if (/linux/i.test(ua)) return 'linux';
+    return 'windows';
+  }
+
+  public detectDeviceName(): string {
+    const plat = this.detectPlatform();
+    if (plat === 'android') return 'Android Phone';
+    if (plat === 'ios') return 'iPhone';
+    if (plat === 'macos') return 'Mac';
+    if (plat === 'linux') return 'Linux PC';
+    return 'Windows PC';
+  }
+
   // Activates the software using a License Key
   public async activateLicense(
     licenseKey: string,
@@ -107,6 +126,8 @@ export class LicenseManager {
   ): Promise<{ success: boolean; message?: string; license?: LicenseInfo }> {
     const hwid = await this.getHardwareId();
     const cleanKey = licenseKey.trim().toUpperCase();
+    const resolvedPlatform = platform || this.detectPlatform();
+    const resolvedDeviceName = deviceName || this.detectDeviceName();
 
     try {
       const response = await fetch(`${this.apiEndpoint}/api/license/activate`, {
@@ -117,8 +138,8 @@ export class LicenseManager {
         body: JSON.stringify({
           license_key: cleanKey,
           hardware_id: hwid,
-          device_name: deviceName || 'TG Drive Client',
-          platform: platform || 'windows',
+          device_name: resolvedDeviceName,
+          platform: resolvedPlatform,
           telegram_user_id: telegramUserId ? String(telegramUserId).trim() : undefined,
           phone_number: phone ? String(phone).trim() : undefined,
         }),

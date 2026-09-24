@@ -1636,44 +1636,32 @@ export default {
             }
           }
 
-          // New device activation - check strict 1 PC + 1 Mobile slot limits
-          const activeDevices = devices.filter(d => d.is_revoked === 0);
-          const targetPlatform = body.platform || 'windows';
-          const isMobile = targetPlatform === 'android' || targetPlatform === 'ios';
-
-          if (license.max_devices <= 2) {
-            // Standard license: strictly 1 Desktop + 1 Phone
-            if (isMobile) {
-              const activeMobile = activeDevices.filter(d => d.platform === 'android' || d.platform === 'ios');
-              if (activeMobile.length >= 1) {
-                return jsonResponse(
-                  {
-                    error: 'Mobile phone limit reached (Max 1 Phone per standard license). Please deactivate your existing phone first to transfer.',
-                  },
-                  429
-                );
-              }
+          // Auto-detect platform if missing or generic
+          const ua = (request.headers.get('user-agent') || '').toLowerCase();
+          let targetPlatform = body.platform;
+          if (!targetPlatform || targetPlatform === 'windows') {
+            if (ua.includes('android')) {
+              targetPlatform = 'android';
+            } else if (ua.includes('iphone') || ua.includes('ipad') || ua.includes('ios')) {
+              targetPlatform = 'ios';
+            } else if (ua.includes('macintosh') || ua.includes('mac os')) {
+              targetPlatform = 'macos';
+            } else if (ua.includes('linux')) {
+              targetPlatform = 'linux';
             } else {
-              const activeDesktop = activeDevices.filter(d => d.platform !== 'android' && d.platform !== 'ios');
-              if (activeDesktop.length >= 1) {
-                return jsonResponse(
-                  {
-                    error: 'Desktop PC limit reached (Max 1 PC/Laptop per standard license). Please deactivate your existing PC first to transfer.',
-                  },
-                  429
-                );
-              }
+              targetPlatform = body.platform || 'windows';
             }
-          } else {
-            // Custom multi-device license
-            if (activeDevices.length >= license.max_devices) {
-              return jsonResponse(
-                {
-                  error: `Device limit reached (${activeDevices.length}/${license.max_devices} devices active). Please transfer or deactivate an existing device first.`,
-                },
-                429
-              );
-            }
+          }
+
+          // Total active device limit check
+          const activeDevices = devices.filter(d => d.is_revoked === 0);
+          if (activeDevices.length >= license.max_devices) {
+            return jsonResponse(
+              {
+                error: `Device limit reached (${activeDevices.length}/${license.max_devices} devices active). Please deactivate your other device first to transfer.`,
+              },
+              429
+            );
           }
         }
 
@@ -1683,8 +1671,8 @@ export default {
           id: activationId,
           license_key: cleanKey,
           hardware_id: body.hardware_id,
-          device_name: body.device_name || 'My Device',
-          platform: body.platform || 'windows',
+          device_name: body.device_name || (targetPlatform === 'android' ? 'Android Device' : targetPlatform === 'ios' ? 'iOS Device' : 'Desktop PC'),
+          platform: targetPlatform,
         });
 
         // Permanently bind Telegram Account to this license if provided
