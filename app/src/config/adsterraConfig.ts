@@ -10,6 +10,8 @@ export interface AdsterraConfig {
   directLinkUrl: string;
   /** Your Adsterra 300x250 Banner Zone Key */
   bannerZoneKey: string;
+  /** Your Adsterra 300x250 Banner Script URL */
+  bannerScriptUrl?: string;
   /** Your Adsterra Native / Social Bar Zone Script URL (optional) */
   socialBarScriptUrl?: string;
   /** Ad cooldown interval between impressions (in milliseconds) - Default: 15 mins */
@@ -19,10 +21,11 @@ export interface AdsterraConfig {
 }
 
 export const ADSTERRA_CONFIG: AdsterraConfig = {
-  // User's Active Adsterra Smartlink
+  // User's Active Adsterra Smartlink (Direct Link)
   directLinkUrl: 'https://www.profitableratecpmnetwork.com/jjf7657e3m?key=ce5513558127ef2ddb8280919a539411',
   // Adsterra 300x250 Banner Key
-  bannerZoneKey: '9cf449272b7e1c83054b82b7639c6029',
+  bannerZoneKey: '9396e3814bf36c82b64a6ddc1c7538ea',
+  bannerScriptUrl: 'https://www.highrevenueformat.com/9396e3814bf36c82b64a6ddc1c7538ea/invoke.js',
   cooldownMs: 15 * 60 * 1000,
   autoDismissSeconds: 10,
 };

@@ -14,13 +14,13 @@ mod desktop_ads {
     use std::net::{IpAddr, SocketAddr};
     use std::time::Duration;
 
-    const AD_SCRIPT_HOST: &str = "www.highperformanceformat.com";
+    const AD_SCRIPT_HOST: &str = "www.highrevenueformat.com";
     const AD_SCRIPT_URL: &str =
-        "https://www.highperformanceformat.com/9cf449272b7e1c83054b82b7639c6029/invoke.js";
+        "https://www.highrevenueformat.com/9396e3814bf36c82b64a6ddc1c7538ea/invoke.js";
     const AD_SCRIPT_MAX_BYTES: usize = 512 * 1024;
     const AD_SCRIPT_FALLBACK_USER_AGENT: &str = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/137.0.0.0 Safari/537.36";
     const AD_DOH_URL: &str =
-        "https://cloudflare-dns.com/dns-query?name=www.highperformanceformat.com&type=A";
+        "https://cloudflare-dns.com/dns-query?name=www.highrevenueformat.com&type=A";
     const AD_BANNER_CSP: &str = "default-src 'none'; script-src 'unsafe-inline' http://localhost:14201/ad-script https:; style-src 'unsafe-inline'; img-src data: https:; media-src https:; connect-src https:; frame-src 'self' https: data: blob:; object-src 'none'; base-uri 'none'; form-action 'none'";
 
     #[derive(Clone)]
@@ -61,7 +61,7 @@ mod desktop_ads {
 <body>
   <script>
     window.atOptions = {
-      key: '9cf449272b7e1c83054b82b7639c6029',
+      key: '9396e3814bf36c82b64a6ddc1c7538ea',
       format: 'iframe',
       height: 250,
       width: 300,
@@ -174,7 +174,7 @@ mod desktop_ads {
     })();
   </script>
   <script
-    src="https://www.highperformanceformat.com/9cf449272b7e1c83054b82b7639c6029/invoke.js"
+    src="https://www.highrevenueformat.com/9396e3814bf36c82b64a6ddc1c7538ea/invoke.js"
     onload="window.telegramDriveDirectAdReady()"
     onerror="window.telegramDriveDirectAdFailed()">
   </script>
