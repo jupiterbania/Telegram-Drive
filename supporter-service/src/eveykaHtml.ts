@@ -734,9 +734,21 @@ export function renderEveykaHtml(): string {
           </tr>
           <tr>
             <td><strong>Client-Side Encrypted Vault</strong></td>
-            <td>Basic Passphrase</td>
+            <td><span class="check-no">✕ Restricted (Pro Only)</span></td>
             <td><span class="check-yes">✓ Full TDENC2 AEAD</span></td>
             <td class="highlight"><span class="check-yes">✓ Full Zero-Knowledge AEAD</span></td>
+          </tr>
+          <tr>
+            <td><strong>Virtual Folders &amp; Organization</strong></td>
+            <td>Saved Messages + 1 Custom Folder</td>
+            <td><span class="check-yes">✓ Unlimited Folders &amp; Tags</span></td>
+            <td class="highlight"><span class="check-yes">✓ Unlimited Folders &amp; Color Tags</span></td>
+          </tr>
+          <tr>
+            <td><strong>Auto Cloud Backup &amp; Sync</strong></td>
+            <td><span class="check-no">✕ Disabled (Pro Only)</span></td>
+            <td><span class="check-yes">✓ Full Background Sync</span></td>
+            <td class="highlight"><span class="check-yes">✓ Full Folder &amp; Camera Sync</span></td>
           </tr>
           <tr>
             <td><strong>Simultaneous Devices</strong></td>
@@ -761,6 +773,12 @@ export function renderEveykaHtml(): string {
             <td><span class="check-no">✕ No</span></td>
             <td><span class="check-yes">✓ Digital PDF</span></td>
             <td class="highlight"><span class="check-yes">✓ Digitally Signed PDF &amp; Invoice</span></td>
+          </tr>
+          <tr>
+            <td><strong>Affiliate / Referral Earnings</strong></td>
+            <td><span class="check-yes">✓ Earn ₹50 Cash / Sale</span></td>
+            <td><span class="check-yes">✓ Earn ₹50 Cash / Sale</span></td>
+            <td class="highlight"><span class="check-yes">✓ Earn ₹50 Cash / Sale + Instant UPI</span></td>
           </tr>
           <tr>
             <td><strong>24/7 Self-Service Key Recovery</strong></td>
