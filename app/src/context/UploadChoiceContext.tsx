@@ -1,6 +1,8 @@
 import { createContext, ReactNode, useCallback, useContext, useRef, useState } from 'react';
-import { Lock, UploadCloud, ShieldCheck, Eye, EyeOff, Sparkles, AlertTriangle } from 'lucide-react';
+import { Lock, UploadCloud, ShieldCheck, Eye, EyeOff, Sparkles, AlertTriangle, Crown } from 'lucide-react';
 import { useModalFocus } from '../hooks/useModalFocus';
+import { useSupporter } from './SupporterContext';
+import { openPaywallGate, shouldShowSponsorContent } from '../services/supporterVisibility';
 import i18n from '../i18n';
 
 export type UploadChoice = 'store' | 'protect';
@@ -13,6 +15,8 @@ const UploadChoiceContext = createContext<UploadChoiceContextValue | null>(null)
 
 export function UploadChoiceProvider({ children }: { children: ReactNode }) {
     const [request, setRequest] = useState<{ count: number; resolve: (choice: UploadChoice | null) => void } | null>(null);
+    const { status: supporterStatus } = useSupporter();
+    const isFreeUser = shouldShowSponsorContent(supporterStatus);
     const panelRef = useRef<HTMLDivElement>(null);
     const finish = useCallback((choice: UploadChoice | null) => {
         request?.resolve(choice);
@@ -23,6 +27,15 @@ export function UploadChoiceProvider({ children }: { children: ReactNode }) {
     const chooseUploadProtection = useCallback((count: number) => new Promise<UploadChoice | null>((resolve) => {
         setRequest({ count, resolve });
     }), []);
+
+    const handleProtectClick = () => {
+        if (isFreeUser) {
+            finish(null);
+            openPaywallGate('encryption');
+            return;
+        }
+        finish('protect');
+    };
 
     return (
         <UploadChoiceContext.Provider value={{ chooseUploadProtection }}>
@@ -88,23 +101,29 @@ export function UploadChoiceProvider({ children }: { children: ReactNode }) {
                             {/* Option 2: Encrypted Vault (Zero-Knowledge) */}
                             <button
                                 type="button"
-                                onClick={() => finish('protect')}
+                                onClick={handleProtectClick}
                                 className="group relative p-4 rounded-2xl bg-telegram-hover/30 hover:bg-telegram-hover/60 border border-telegram-border/40 hover:border-amber-500/50 transition-all text-start flex flex-col justify-between active:scale-[0.98] cursor-pointer"
                             >
                                 <div>
                                     <div className="flex items-center justify-between mb-3">
                                         <div className="w-10 h-10 rounded-xl bg-amber-500/15 border border-amber-500/25 flex items-center justify-center text-amber-400 group-hover:scale-105 transition-transform">
-                                            <Lock className="w-5 h-5" />
+                                            {isFreeUser ? <Crown className="w-5 h-5 text-amber-400" /> : <Lock className="w-5 h-5" />}
                                         </div>
-                                        <span className="text-[10px] font-semibold uppercase tracking-wider px-2 py-0.5 rounded-full bg-amber-500/15 text-amber-400 border border-amber-500/25">
-                                            Encrypted
+                                        <span className={`text-[10px] font-bold uppercase tracking-wider px-2 py-0.5 rounded-full border ${
+                                            isFreeUser
+                                                ? 'bg-amber-500/20 text-amber-300 border-amber-500/40 font-black'
+                                                : 'bg-amber-500/15 text-amber-400 border-amber-500/25 font-semibold'
+                                        }`}>
+                                            {isFreeUser ? '👑 TG Drive Pro' : 'Encrypted'}
                                         </span>
                                     </div>
                                     <span className="block text-sm font-bold text-telegram-text group-hover:text-amber-500 transition-colors">
                                         Encrypted Vault
                                     </span>
                                     <p className="mt-1 text-xs text-telegram-subtext leading-relaxed">
-                                        Client-side zero-knowledge encryption.
+                                        {isFreeUser
+                                            ? 'Client-side zero-knowledge encryption (TG Drive Pro feature).'
+                                            : 'Client-side zero-knowledge encryption.'}
                                     </p>
                                 </div>
 

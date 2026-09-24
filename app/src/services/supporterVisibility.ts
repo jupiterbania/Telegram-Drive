@@ -53,3 +53,10 @@ export function shouldShowSupporterPrompt(
   if (status.checkout_pending) return false;
   return isSupporterPromptDue(status, lastShownAt, now);
 }
+
+export const PAYWALL_OPEN_EVENT = 'telegram-drive-open-paywall';
+
+export function openPaywallGate(feature: 'folders' | 'autobackup' | 'speed' | 'ads' | 'encryption' | 'general' = 'general'): void {
+  window.dispatchEvent(new CustomEvent(PAYWALL_OPEN_EVENT, { detail: { feature } }));
+}
+

@@ -29,7 +29,7 @@ import { openExternalUrl } from '../../utils/url';
 import { useTheme } from '../../context/ThemeContext';
 import { checkEmailValidity } from '../../utils/emailValidation';
 
-export type PaywallTriggerFeature = 'folders' | 'autobackup' | 'speed' | 'ads' | 'general';
+export type PaywallTriggerFeature = 'folders' | 'autobackup' | 'speed' | 'ads' | 'encryption' | 'general';
 
 const LICENSE_API_BASE = 'https://tg-drive-license-service.jupiterbania472.workers.dev';
 
@@ -742,6 +742,7 @@ export const PaywallGateModal: React.FC<PaywallGateModalProps> = ({
               {triggerFeature === 'autobackup' && <RefreshCw className="h-5 w-5 text-cyan-400" />}
               {triggerFeature === 'speed' && <Zap className="h-5 w-5 text-amber-400" />}
               {triggerFeature === 'ads' && <ShieldCheck className="h-5 w-5 text-emerald-400" />}
+              {triggerFeature === 'encryption' && <Lock className="h-5 w-5 text-amber-400" />}
             </div>
             <div className="flex-1 min-w-0">
               <span className="font-extrabold text-[12px] text-cyan-300 block">
@@ -749,12 +750,14 @@ export const PaywallGateModal: React.FC<PaywallGateModalProps> = ({
                 {triggerFeature === 'autobackup' && 'Unlock Auto Cloud Backup & Sync'}
                 {triggerFeature === 'speed' && 'Unlock 10x Turbo Multi-Stream Speed'}
                 {triggerFeature === 'ads' && '100% Ad-Free Cloud Vault'}
+                {triggerFeature === 'encryption' && 'Unlock Client-Side Encrypted Uploads'}
               </span>
               <p className={`text-[11px] mt-0.5 leading-snug ${isLight ? 'text-slate-600' : 'text-slate-300'}`}>
                 {triggerFeature === 'folders' && 'Free plan includes 1 custom folder. Upgrade to TG Drive Pro to create unlimited custom folders, organize files into smart categories, and sync across all your channels.'}
                 {triggerFeature === 'autobackup' && 'Auto Backup runs silently in the background to automatically protect your camera photos, videos, and documents to Telegram. Upgrade to Pro to enable.'}
                 {triggerFeature === 'speed' && 'Free plan uses standard single-stream transfer rate. Upgrade to Pro to enjoy maximum parallel chunk multi-threading at top line bandwidth.'}
                 {triggerFeature === 'ads' && 'Upgrade to Pro to remove all sponsor banners and enjoy pure, ultra-fast cloud drive experience.'}
+                {triggerFeature === 'encryption' && 'Encrypted file upload is a TG Drive Pro feature. Upgrade to Pro to encrypt private photos, videos, and files client-side with zero-knowledge AES-GCM encryption before upload.'}
               </p>
             </div>
           </div>

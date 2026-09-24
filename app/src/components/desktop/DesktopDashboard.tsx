@@ -313,8 +313,17 @@ export function Dashboard({ onLogout }: { onLogout: () => void }) {
             setSettingsInitialTab(tab);
             setShowSettings(true);
         };
+        const openPaywall = (event: Event) => {
+            const feature = (event as CustomEvent<{ feature?: PaywallTriggerFeature }>).detail?.feature ?? 'general';
+            setPaywallTriggerFeature(feature);
+            setShowProUpgradeModal(true);
+        };
         window.addEventListener('telegram-drive-open-settings', openSettings);
-        return () => window.removeEventListener('telegram-drive-open-settings', openSettings);
+        window.addEventListener('telegram-drive-open-paywall', openPaywall);
+        return () => {
+            window.removeEventListener('telegram-drive-open-settings', openSettings);
+            window.removeEventListener('telegram-drive-open-paywall', openPaywall);
+        };
     }, []);
 
     const { data: allFiles = [], isLoading, error } = useQuery({

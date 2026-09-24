@@ -511,6 +511,14 @@ export default function MobileDashboard({ onLogout }: { onLogout?: () => void })
 
   useEffect(() => {
     void loadAndVerifyLicense();
+
+    const handleOpenPaywall = (event: Event) => {
+      const feature = (event as CustomEvent<{ feature?: PaywallTriggerFeature }>).detail?.feature ?? 'general';
+      setPaywallTriggerFeature(feature);
+      setShowProUpgradeModal(true);
+    };
+    window.addEventListener('telegram-drive-open-paywall', handleOpenPaywall);
+    return () => window.removeEventListener('telegram-drive-open-paywall', handleOpenPaywall);
   }, [loadAndVerifyLicense]);
 
   const handleSyncMobileLicense = async () => {

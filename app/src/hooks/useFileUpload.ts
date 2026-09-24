@@ -10,11 +10,12 @@ import { useSettings } from '../context/SettingsContext';
 import type { Store } from '@tauri-apps/plugin-store';
 import type { SyncProgressPayload } from '../types/sync';
 import { useTranslation } from 'react-i18next';
+import { useSupporter } from '../context/SupporterContext';
 import { useUploadChoice, type UploadChoice } from '../context/UploadChoiceContext';
 import { promptPassphrase } from '../context/PromptContext';
 import { triggerHaptic } from '../services/feedback';
 import { isTransientNetworkError, restoreUploadQueue, serializeUploadQueue } from '../services/transferQueuePolicy';
-import { announceSupporterValueMoment } from '../services/supporterVisibility';
+import { announceSupporterValueMoment, openPaywallGate, shouldShowSponsorContent } from '../services/supporterVisibility';
 import { userFacingError } from '../services/userFacingError';
 import { invalidateFolderFileQueries } from '../services/fileListRefresh';
 import { effectiveVideoUploadMode } from '../services/videoUploadMode';
@@ -57,6 +58,8 @@ export function useFileUpload(
     const { t } = useTranslation();
     const queryClient = useQueryClient();
     const { settings } = useSettings();
+    const { status: supporterStatus } = useSupporter();
+    const isFreeUser = shouldShowSponsorContent(supporterStatus);
     const { chooseUploadProtection } = useUploadChoice();
     const [uploadQueue, setUploadQueue] = useState<QueueItem[]>([]);
     const [initialized, setInitialized] = useState(false);
@@ -520,6 +523,12 @@ export function useFileUpload(
         requestedMode = settings.encryptionDefaultMode,
     ): Promise<UploadProtectionIntent[] | null> => {
         const mode = requestedMode;
+        if (mode !== 'standard' && isFreeUser) {
+            toast.error('Encrypted uploads require TG Drive Pro. Please upgrade to Pro.');
+            openPaywallGate('encryption');
+            return null;
+        }
+
         const base: UploadProtectionIntent = {
             mode,
             protectMetadata: settings.encryptionProtectMetadata,
@@ -632,6 +641,11 @@ export function useFileUpload(
         if (!choice) return null;
         if (choice === 'store') {
             return stageProtectionForFiles(count, 'standard');
+        }
+        if (isFreeUser) {
+            toast.error('Encrypted uploads require TG Drive Pro. Please upgrade to Pro.');
+            openPaywallGate('encryption');
+            return null;
         }
         const protectedMode = settings.encryptionDefaultMode === 'standard'
             ? 'vault'
