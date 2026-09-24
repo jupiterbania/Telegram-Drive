@@ -16,6 +16,8 @@ import { CSS } from '@dnd-kit/utilities';
 import { quietMetrics } from '../../../design/contracts';
 import { CreateFolderDialog } from './CreateFolderDialog';
 import { SyncStatusBadge } from '../sync/SyncStatusBadge';
+import { SmartAdBanner } from '../../shared/SmartAdBanner';
+import type { PaywallTriggerFeature } from '../../shared/PaywallGateModal';
 
 const PRESET_COLORS = [
     '#3B82F6', // Blue
@@ -117,16 +119,28 @@ interface SidebarProps {
     createFolderRequest?: number;
     activeSmartView?: SmartView | null;
     onSmartViewChange?: (view: SmartView | null) => void;
+    isPro?: boolean;
+    onRequirePro?: (feature?: PaywallTriggerFeature) => void;
 }
 
 export function Sidebar({
     folders, groups = [], activeFolderId, setActiveFolderId, onDelete, onRename, onToggleVisibility, onExportInvite, onCreate,
     isSyncing, isConnected, onSync, onLogout, userProfile, bandwidth,
-    onAssignFolderToGroup, onCreateGroup, onUpdateGroup, onDeleteGroup, createFolderRequest = 0, activeSmartView = null, onSmartViewChange
+    onAssignFolderToGroup, onCreateGroup, onUpdateGroup, onDeleteGroup, createFolderRequest = 0, activeSmartView = null, onSmartViewChange,
+    isPro = false, onRequirePro
 }: SidebarProps) {
     const [showNewFolderInput, setShowNewFolderInput] = useState(false);
     const { t } = useTranslation();
     const { settings, updateSetting } = useSettings();
+
+    const handleOpenCreateFolder = () => {
+        const customFolders = folders.filter(f => f.name.toLowerCase() !== 'saved messages' && f.name.toLowerCase() !== 'saved');
+        if (!isPro && customFolders.length >= 1) {
+            onRequirePro?.('folders');
+            return;
+        }
+        setShowNewFolderInput(true);
+    };
 
     // Grouping States
     const [activeGroupId, setActiveGroupId] = useState<number | null | 'all'>('all');
@@ -136,7 +150,9 @@ export function Sidebar({
     const [groupColor, setGroupColor] = useState("#3B82F6");
 
     useEffect(() => {
-        if (createFolderRequest > 0) setShowNewFolderInput(true);
+        if (createFolderRequest > 0) {
+            handleOpenCreateFolder();
+        }
     }, [createFolderRequest]);
 
     const handleSaveGroup = async () => {
@@ -422,12 +438,19 @@ export function Sidebar({
             {!settings.sidebarCollapsed && (
                 <div className="border-t border-app-border-subtle px-2 py-2">
                     <button
-                        onClick={() => setShowNewFolderInput(true)}
-                        className="quiet-control flex h-9 w-full items-center gap-2 border border-dashed border-app-border px-3 text-ui font-medium text-app-text-secondary hover:border-app-border-strong hover:text-app-text"
+                        onClick={handleOpenCreateFolder}
+                        className="quiet-control flex h-9 w-full items-center gap-2 border border-dashed border-app-border px-3 text-ui font-medium text-app-text-secondary hover:border-app-border-strong hover:text-app-text cursor-pointer"
                     >
                         <Plus className="w-4 h-4" />
                         {t('common.create_folder')}
                     </button>
+
+                    {/* Smart Free Tier Upgrade Ad Banner */}
+                    {!isPro && (
+                        <div className="mt-2">
+                            <SmartAdBanner onUpgrade={onRequirePro || (() => {})} variant="compact" />
+                        </div>
+                    )}
                 </div>
             )}
 

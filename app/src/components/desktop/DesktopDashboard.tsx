@@ -38,7 +38,7 @@ import { KeyboardShortcutsDialog } from './dashboard/KeyboardShortcutsDialog';
 import { DriveConceptTour } from './dashboard/DriveConceptTour';
 import { LazyFeatureBoundary } from '../shared/LazyFeatureBoundary';
 import { SupporterOfferDialog } from '../shared/SupporterOfferDialog';
-import { PaywallGateModal } from '../shared/PaywallGateModal';
+import { PaywallGateModal, type PaywallTriggerFeature } from '../shared/PaywallGateModal';
 import { licenseManager, type LicenseInfo } from '../../services/licenseManager';
 import { SyncDashboard } from './sync/SyncDashboard';
 import { Files } from 'lucide-react';
@@ -92,7 +92,8 @@ export function Dashboard({ onLogout }: { onLogout: () => void }) {
     const { status: supporterStatus, refreshStatus } = useSupporter();
     const { vaultStatus } = useEncryption();
     const [showProUpgradeModal, setShowProUpgradeModal] = useState(false);
-    const [, setDesktopLicense] = useState<LicenseInfo | null>(null);
+    const [paywallTriggerFeature, setPaywallTriggerFeature] = useState<PaywallTriggerFeature>('general');
+    const [desktopLicense, setDesktopLicense] = useState<LicenseInfo | null>(null);
     const [desktopExpiredAlert, setDesktopExpiredAlert] = useState<string | null>(null);
 
     const loadAndVerifyDesktopLicense = useCallback(async () => {
@@ -101,9 +102,7 @@ export function Dashboard({ onLogout }: { onLogout: () => void }) {
             setDesktopLicense(local);
 
             if (local.expiresAt && local.expiresAt < Math.floor(Date.now() / 1000)) {
-                setDesktopExpiredAlert('Your Free Trial / Subscription has expired. Please purchase a Pro License to continue.');
-                setShowProUpgradeModal(true);
-                return;
+                setDesktopExpiredAlert('Your Free Trial / Subscription has expired. Please upgrade to TG Drive Pro to continue enjoying full perks.');
             }
 
             if (userProfile) {
@@ -113,16 +112,12 @@ export function Dashboard({ onLogout }: { onLogout: () => void }) {
                     setShowProUpgradeModal(false);
                     setDesktopExpiredAlert(null);
                     void refreshStatus();
-                } else if (!local.isLicensed && !supporterStatus.ad_free) {
-                    setShowProUpgradeModal(true);
                 }
-            } else if (!local.isLicensed && !supporterStatus.ad_free) {
-                setShowProUpgradeModal(true);
             }
         } catch {
             // ignore
         }
-    }, [userProfile, refreshStatus, supporterStatus.ad_free]);
+    }, [userProfile, refreshStatus]);
 
     useEffect(() => {
         void loadAndVerifyDesktopLicense();
@@ -1175,6 +1170,11 @@ export function Dashboard({ onLogout }: { onLogout: () => void }) {
                 createFolderRequest={createFolderRequest}
                 activeSmartView={activeSmartView}
                 onSmartViewChange={setActiveSmartView}
+                isPro={Boolean(desktopLicense?.isLicensed || supporterStatus.ad_free)}
+                onRequirePro={(feat) => {
+                    setPaywallTriggerFeature(feat || 'general');
+                    setShowProUpgradeModal(true);
+                }}
             />
 
             <main className="flex min-w-0 flex-1 flex-col">
@@ -1201,7 +1201,16 @@ export function Dashboard({ onLogout }: { onLogout: () => void }) {
                     onSearchFiltersChange={setSearchFilters}
                     onSettingsClick={() => setShowSettings(true)}
                     onRemoteUploadClick={() => setShowRemoteUpload(true)}
-                    onNewFolderClick={() => setCreateFolderRequest((value) => value + 1)}
+                    onNewFolderClick={() => {
+                        const isPro = Boolean(desktopLicense?.isLicensed || supporterStatus.ad_free);
+                        const customFolders = folders.filter(f => f.name.toLowerCase() !== 'saved messages' && f.name.toLowerCase() !== 'saved');
+                        if (!isPro && customFolders.length >= 1) {
+                            setPaywallTriggerFeature('folders');
+                            setShowProUpgradeModal(true);
+                            return;
+                        }
+                        setCreateFolderRequest((value) => value + 1);
+                    }}
                     onShowShortcuts={() => setShowShortcuts(true)}
                     onShowHelp={() => setShowHelp(true)}
                 />
@@ -1309,6 +1318,11 @@ export function Dashboard({ onLogout }: { onLogout: () => void }) {
                 onResumeDownloads={resumeDownloads}
                 onCancelDownload={cancelDownloadItem}
                 onRetryDownload={retryDownloadItem}
+                isPro={Boolean(desktopLicense?.isLicensed || supporterStatus.ad_free)}
+                onRequirePro={(feat) => {
+                    setPaywallTriggerFeature(feat || 'general');
+                    setShowProUpgradeModal(true);
+                }}
             />
 
             {settingsModuleRequested.current && (
@@ -1335,8 +1349,10 @@ export function Dashboard({ onLogout }: { onLogout: () => void }) {
             {showProUpgradeModal && (
                 <PaywallGateModal
                     isOpen={showProUpgradeModal}
-                    isCompulsory={true}
+                    isCompulsory={false}
+                    triggerFeature={paywallTriggerFeature}
                     expiredReason={desktopExpiredAlert}
+                    onClose={() => setShowProUpgradeModal(false)}
                     telegramAccount={{
                         userId: userProfile?.id,
                         phoneNumber: userProfile?.phone,

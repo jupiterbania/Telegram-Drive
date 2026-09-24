@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { CheckCircle2, ChevronDown, ChevronUp, Download, Pause, Play, RotateCcw, UploadCloud, X } from 'lucide-react';
+import { CheckCircle2, ChevronDown, ChevronUp, Download, Pause, Play, RotateCcw, UploadCloud, X, Zap } from 'lucide-react';
 import type { DownloadItem, QueueItem } from '../../../types';
 import { formatBytes } from '../../../utils';
 import i18n from '../../../i18n';
@@ -20,6 +20,8 @@ interface TransferCenterProps {
   onResumeDownloads: () => void;
   onCancelDownload: (id: string) => void;
   onRetryDownload: (id: string) => void;
+  isPro?: boolean;
+  onRequirePro?: (feature: 'speed' | 'general') => void;
 }
 
 function TransferProgress({ value, tone = 'accent' }: { value?: number; tone?: 'accent' | 'info' }) {
@@ -64,6 +66,8 @@ export function TransferCenter({
   onResumeDownloads,
   onCancelDownload,
   onRetryDownload,
+  isPro = false,
+  onRequirePro,
 }: TransferCenterProps) {
   const [expanded, setExpanded] = useState(true);
   useEffect(() => {
@@ -86,7 +90,7 @@ export function TransferCenter({
 
   return (
     <aside className="quiet-raised fixed bottom-4 start-4 z-50 w-[min(360px,calc(100vw-2rem))] overflow-hidden min-[1050px]:start-auto min-[1050px]:end-4" aria-label="Transfer activity">
-      <button type="button" onClick={() => setExpanded((value) => !value)} aria-expanded={expanded} className="flex w-full items-center gap-3 border-b border-app-border-subtle px-4 py-3 text-start hover:bg-app-hover">
+      <button type="button" onClick={() => setExpanded((value) => !value)} aria-expanded={expanded} className="flex w-full items-center gap-3 border-b border-app-border-subtle px-4 py-3 text-start hover:bg-app-hover cursor-pointer">
         <div className="flex h-8 w-8 items-center justify-center rounded-control bg-app-selected text-app-accent"><UploadCloud className="h-4 w-4" /></div>
         <div className="min-w-0 flex-1">
           <h3 className="text-sm font-medium text-app-text">Transfers</h3>
@@ -103,6 +107,24 @@ export function TransferCenter({
 
       {expanded && (
         <div className="max-h-[min(420px,60vh)] overflow-y-auto">
+          {/* Turbo Speed Boost Banner for Free Users */}
+          {!isPro && (
+            <div
+              onClick={() => onRequirePro?.('speed')}
+              className="m-2 p-2.5 rounded-xl bg-gradient-to-r from-amber-500/15 via-orange-500/10 to-transparent border border-amber-500/30 flex items-center justify-between gap-2 cursor-pointer hover:border-amber-400/50 transition-all shadow-xs"
+            >
+              <div className="flex items-center gap-2 min-w-0">
+                <Zap className="h-4 w-4 text-amber-400 shrink-0 animate-pulse" />
+                <div className="min-w-0">
+                  <p className="text-[11px] font-bold text-amber-400 truncate">Standard Speed Active</p>
+                  <p className="text-[9px] text-app-text-secondary truncate">Unlock 10x Turbo Multi-Stream Uploads</p>
+                </div>
+              </div>
+              <span className="px-2 py-0.5 rounded-lg text-[10px] font-black bg-amber-400 text-slate-950 shrink-0">
+                BOOST ⚡
+              </span>
+            </div>
+          )}
           {uploads.length > 0 && (
             <section>
               <div className="flex items-center justify-between bg-app-surface-sunken/25 px-4 py-2">

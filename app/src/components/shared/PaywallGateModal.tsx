@@ -21,11 +21,15 @@ import {
   X,
   Phone,
   LogOut,
+  FolderPlus,
+  RefreshCw,
 } from 'lucide-react';
 import { licenseManager, type LicenseInfo } from '../../services/licenseManager';
 import { openExternalUrl } from '../../utils/url';
 import { useTheme } from '../../context/ThemeContext';
 import { checkEmailValidity } from '../../utils/emailValidation';
+
+export type PaywallTriggerFeature = 'folders' | 'autobackup' | 'speed' | 'ads' | 'general';
 
 const LICENSE_API_BASE = 'https://tg-drive-license-service.jupiterbania472.workers.dev';
 
@@ -74,6 +78,7 @@ interface PaywallGateModalProps {
   purchaseUrl?: string;
   telegramAccount?: TelegramAccountCheckoutInfo | null;
   expiredReason?: string | null;
+  triggerFeature?: PaywallTriggerFeature;
 }
 
 const DEFAULT_PERKS = [
@@ -93,6 +98,7 @@ export const PaywallGateModal: React.FC<PaywallGateModalProps> = ({
   purchaseUrl = 'https://rzp.io/rzp/eBLEV0w',
   telegramAccount,
   expiredReason,
+  triggerFeature,
 }) => {
   const scrollContainerRef = useRef<HTMLDivElement>(null);
   const { theme } = useTheme();
@@ -719,6 +725,36 @@ export const PaywallGateModal: React.FC<PaywallGateModalProps> = ({
               </div>
               <p className="text-[10px] opacity-80 mt-0.5 truncate">
                 Purchasing connects Pro directly to your Telegram number on all devices.
+              </p>
+            </div>
+          </div>
+        )}
+
+        {/* Contextual Feature Unlock Banner */}
+        {triggerFeature && triggerFeature !== 'general' && (
+          <div className={`relative mb-3 flex items-start gap-2.5 rounded-2xl border p-3 text-xs shadow-xs animate-fade-in ${
+            isLight
+              ? 'bg-cyan-50/90 border-cyan-200 text-cyan-950'
+              : 'bg-gradient-to-r from-cyan-950/50 to-blue-950/40 border-cyan-500/40 text-cyan-100'
+          }`}>
+            <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-cyan-500/20 text-cyan-400 mt-0.5">
+              {triggerFeature === 'folders' && <FolderPlus className="h-5 w-5 text-cyan-400" />}
+              {triggerFeature === 'autobackup' && <RefreshCw className="h-5 w-5 text-cyan-400" />}
+              {triggerFeature === 'speed' && <Zap className="h-5 w-5 text-amber-400" />}
+              {triggerFeature === 'ads' && <ShieldCheck className="h-5 w-5 text-emerald-400" />}
+            </div>
+            <div className="flex-1 min-w-0">
+              <span className="font-extrabold text-[12px] text-cyan-300 block">
+                {triggerFeature === 'folders' && 'Unlock Unlimited Cloud Folders'}
+                {triggerFeature === 'autobackup' && 'Unlock Auto Cloud Backup & Sync'}
+                {triggerFeature === 'speed' && 'Unlock 10x Turbo Multi-Stream Speed'}
+                {triggerFeature === 'ads' && '100% Ad-Free Cloud Vault'}
+              </span>
+              <p className={`text-[11px] mt-0.5 leading-snug ${isLight ? 'text-slate-600' : 'text-slate-300'}`}>
+                {triggerFeature === 'folders' && 'Free plan includes 1 custom folder. Upgrade to TG Drive Pro to create unlimited custom folders, organize files into smart categories, and sync across all your channels.'}
+                {triggerFeature === 'autobackup' && 'Auto Backup runs silently in the background to automatically protect your camera photos, videos, and documents to Telegram. Upgrade to Pro to enable.'}
+                {triggerFeature === 'speed' && 'Free plan uses standard single-stream transfer rate. Upgrade to Pro to enjoy maximum parallel chunk multi-threading at top line bandwidth.'}
+                {triggerFeature === 'ads' && 'Upgrade to Pro to remove all sponsor banners and enjoy pure, ultra-fast cloud drive experience.'}
               </p>
             </div>
           </div>

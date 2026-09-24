@@ -24,7 +24,8 @@ import { useEncryption } from '../../hooks/useEncryption';
 const LazyVaultPassphraseModal = lazy(() => import('./VaultPassphraseModal').then((module) => ({ default: module.VaultPassphraseModal })));
 import { MobileSupporterCard } from './MobileSupporterCard';
 import { SupporterOfferDialog } from '../shared/SupporterOfferDialog';
-import { PaywallGateModal } from '../shared/PaywallGateModal';
+import { PaywallGateModal, type PaywallTriggerFeature } from '../shared/PaywallGateModal';
+import { SmartAdBanner } from '../shared/SmartAdBanner';
 import { licenseManager, type LicenseInfo } from '../../services/licenseManager';
 import { usePlatform } from '../../hooks/usePlatform';
 import { useTelegramConnection } from '../../hooks/useTelegramConnection';
@@ -265,6 +266,7 @@ export default function MobileDashboard({ onLogout }: { onLogout?: () => void })
   const [showHelp, setShowHelp] = useState(false);
   const [supporterOfferTrigger, setSupporterOfferTrigger] = useState<SupporterPromptTrigger | null>(null);
   const [showProUpgradeModal, setShowProUpgradeModal] = useState(false);
+  const [paywallTriggerFeature, setPaywallTriggerFeature] = useState<PaywallTriggerFeature>('general');
   const [mobileLicense, setMobileLicense] = useState<LicenseInfo | null>(null);
   const [isLicenseSyncing, setIsLicenseSyncing] = useState(false);
   const [showManualKeyModal, setShowManualKeyModal] = useState(false);
@@ -464,9 +466,7 @@ export default function MobileDashboard({ onLogout }: { onLogout?: () => void })
       setMobileLicense(local);
 
       if (local.expiresAt && local.expiresAt < Math.floor(Date.now() / 1000)) {
-        setExpiredAlertText('Your Free Trial / Subscription has expired. Please purchase a Pro License to continue.');
-        setShowProUpgradeModal(true);
-        return;
+        setExpiredAlertText('Your Free Trial / Subscription has expired. Please upgrade to TG Drive Pro to continue.');
       }
 
       if (userProfile) {
@@ -476,18 +476,38 @@ export default function MobileDashboard({ onLogout }: { onLogout?: () => void })
           setShowProUpgradeModal(false);
           setExpiredAlertText(null);
           void refreshStatus();
-        } else {
-          if (!local.isLicensed && !supporterStatus.ad_free) {
-            setShowProUpgradeModal(true);
-          }
         }
-      } else if (!local.isLicensed && !supporterStatus.ad_free) {
-        setShowProUpgradeModal(true);
       }
     } catch {
       // ignore
     }
-  }, [userProfile, refreshStatus, supporterStatus.ad_free]);
+  }, [userProfile, refreshStatus]);
+
+  const isProUser = Boolean(mobileLicense?.isLicensed || supporterStatus.ad_free);
+
+  const handleOpenCreateFolder = useCallback(() => {
+    const customFolders = folders.filter(f => f.name.toLowerCase() !== 'saved messages' && f.name.toLowerCase() !== 'saved');
+    if (!isProUser && customFolders.length >= 1) {
+      setPaywallTriggerFeature('folders');
+      setShowProUpgradeModal(true);
+      return;
+    }
+    setShowCreateFolder(true);
+  }, [folders, isProUser]);
+
+  const handleOpenAutoBackup = useCallback(() => {
+    if (!isProUser) {
+      setPaywallTriggerFeature('autobackup');
+      setShowProUpgradeModal(true);
+      return;
+    }
+    setShowAutoBackupSheet(true);
+  }, [isProUser]);
+
+  const handleTriggerPro = useCallback((feature: PaywallTriggerFeature = 'general') => {
+    setPaywallTriggerFeature(feature);
+    setShowProUpgradeModal(true);
+  }, []);
 
   useEffect(() => {
     void loadAndVerifyLicense();
@@ -2408,7 +2428,7 @@ export default function MobileDashboard({ onLogout }: { onLogout?: () => void })
             <div className="flex items-center gap-2 shrink-0">
               <button
                 type="button"
-                onClick={() => setShowCreateFolder(true)}
+                onClick={handleOpenCreateFolder}
                 className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-bold bg-telegram-primary text-black hover:bg-telegram-primary/95 border border-telegram-primary/10 active:scale-95 transition-all duration-200 shadow-sm shadow-telegram-primary/20"
                 title={t('common.new_folder', 'New Folder')}
               >
@@ -3086,7 +3106,7 @@ export default function MobileDashboard({ onLogout }: { onLogout?: () => void })
                       </p>
                       {!folderSearch && (
                         <button
-                          onClick={() => setShowCreateFolder(true)}
+                          onClick={handleOpenCreateFolder}
                           className="mt-3 inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-telegram-primary text-black font-bold text-xs shadow-sm active:scale-95 transition-all"
                         >
                           <FolderPlus className="w-3.5 h-3.5" />
@@ -4382,7 +4402,7 @@ export default function MobileDashboard({ onLogout }: { onLogout?: () => void })
                     <div className="flex items-center gap-2">
                       <button
                         type="button"
-                        onClick={() => setShowAutoBackupSheet(true)}
+                        onClick={handleOpenAutoBackup}
                         className="flex-1 flex items-center justify-center gap-1.5 h-9 rounded-xl bg-telegram-primary hover:bg-telegram-primary/90 text-white text-xs font-bold transition shadow-sm active:scale-98"
                       >
                         <Sliders className="w-3.5 h-3.5" />
@@ -6038,7 +6058,7 @@ export default function MobileDashboard({ onLogout }: { onLogout?: () => void })
                     {syncSettings.data?.enabled ? 'Active' : 'Off'}
                   </span>
                 }
-                onClick={() => setShowAutoBackupSheet(true)}
+                onClick={handleOpenAutoBackup}
               />
             </div>
 
@@ -6344,12 +6364,19 @@ export default function MobileDashboard({ onLogout }: { onLogout?: () => void })
 
           {/* Create Folder Button */}
           <button
-            onClick={() => setShowCreateFolder(true)}
-            className="w-full flex items-center justify-center gap-2 py-3 rounded-2xl bg-telegram-primary text-black hover:bg-telegram-primary/95 font-bold text-xs active:scale-98 transition-all duration-200 shadow-md shadow-telegram-primary/20"
+            onClick={handleOpenCreateFolder}
+            className="w-full flex items-center justify-center gap-2 py-3 rounded-2xl bg-telegram-primary text-black hover:bg-telegram-primary/95 font-bold text-xs active:scale-98 transition-all duration-200 shadow-md shadow-telegram-primary/20 cursor-pointer"
           >
             <FolderPlus className="w-4 h-4" />
             Create New Folder
           </button>
+
+          {/* Smart Free Tier Upgrade Ad Banner in Drawer */}
+          {!isProUser && (
+            <div className="mt-2">
+              <SmartAdBanner onUpgrade={handleTriggerPro} variant="compact" />
+            </div>
+          )}
         </div>
       </aside>
 
@@ -6451,8 +6478,10 @@ export default function MobileDashboard({ onLogout }: { onLogout?: () => void })
       {showProUpgradeModal && (
         <PaywallGateModal
           isOpen={showProUpgradeModal}
-          isCompulsory={true}
+          isCompulsory={false}
+          triggerFeature={paywallTriggerFeature}
           expiredReason={expiredAlertText}
+          onClose={() => setShowProUpgradeModal(false)}
           telegramAccount={{
             userId: userProfile?.id,
             phoneNumber: userProfile?.phone,
@@ -6817,7 +6846,7 @@ export default function MobileDashboard({ onLogout }: { onLogout?: () => void })
                 type="button"
                 onClick={() => {
                   setShowUploadDestinationSheet(false);
-                  setShowCreateFolder(true);
+                  handleOpenCreateFolder();
                 }}
                 className="flex-1 flex items-center justify-center gap-2 py-2.5 px-3 rounded-xl text-xs font-semibold bg-telegram-surface border border-telegram-border/40 text-telegram-text hover:bg-telegram-hover/50 active:scale-95 transition-all cursor-pointer"
               >
