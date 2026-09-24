@@ -1615,6 +1615,45 @@ export default {
           return jsonResponse({ error: 'License key has expired. Please renew your license.' }, 403);
         }
 
+        const incomingTgId = body.telegram_user_id ? String(body.telegram_user_id).trim() : null;
+        const incomingPhone = body.phone_number ? String(body.phone_number).trim() : null;
+        const isTelegramAccountProvided = Boolean(incomingTgId || incomingPhone);
+
+        // Anti-sharing: If license is already bound to a Telegram account, reject different accounts
+        if (isTelegramAccountProvided && (license.telegram_user_id || license.phone_number)) {
+          const matchesTgId = license.telegram_user_id && incomingTgId && license.telegram_user_id === incomingTgId;
+          const matchesPhone = license.phone_number && incomingPhone && (
+            license.phone_number === incomingPhone || 
+            normalizePhone(license.phone_number) === normalizePhone(incomingPhone)
+          );
+
+          if (!matchesTgId && !matchesPhone) {
+            return jsonResponse(
+              {
+                error: 'This license key is already bound to another Telegram account. Each Pro license is tied to a single Telegram account.',
+              },
+              403
+            );
+          }
+        }
+
+        // Auto-detect platform if missing or generic
+        const ua = (request.headers.get('user-agent') || '').toLowerCase();
+        let targetPlatform = body.platform;
+        if (!targetPlatform || targetPlatform === 'windows') {
+          if (ua.includes('android')) {
+            targetPlatform = 'android';
+          } else if (ua.includes('iphone') || ua.includes('ipad') || ua.includes('ios')) {
+            targetPlatform = 'ios';
+          } else if (ua.includes('macintosh') || ua.includes('mac os')) {
+            targetPlatform = 'macos';
+          } else if (ua.includes('linux')) {
+            targetPlatform = 'linux';
+          } else {
+            targetPlatform = body.platform || 'windows';
+          }
+        }
+
         // Check if this device is already activated
         const devices = await getDevicesForLicense(env.DB, cleanKey);
         const existingDevice = devices.find(d => d.hardware_id === body.hardware_id);
@@ -1636,32 +1675,20 @@ export default {
             }
           }
 
-          // Auto-detect platform if missing or generic
-          const ua = (request.headers.get('user-agent') || '').toLowerCase();
-          let targetPlatform = body.platform;
-          if (!targetPlatform || targetPlatform === 'windows') {
-            if (ua.includes('android')) {
-              targetPlatform = 'android';
-            } else if (ua.includes('iphone') || ua.includes('ipad') || ua.includes('ios')) {
-              targetPlatform = 'ios';
-            } else if (ua.includes('macintosh') || ua.includes('mac os')) {
-              targetPlatform = 'macos';
-            } else if (ua.includes('linux')) {
-              targetPlatform = 'linux';
-            } else {
-              targetPlatform = body.platform || 'windows';
+          // If the license is linked to a verified Telegram account (or linking now),
+          // all devices belonging to that Telegram account are automatically allowed.
+          // Otherwise, enforce max_devices limit.
+          const isLinkedAccount = isTelegramAccountProvided || Boolean(license.telegram_user_id || license.phone_number);
+          if (!isLinkedAccount) {
+            const activeDevices = devices.filter(d => d.is_revoked === 0);
+            if (activeDevices.length >= license.max_devices) {
+              return jsonResponse(
+                {
+                  error: `Device limit reached (${activeDevices.length}/${license.max_devices} devices active). Please link your Telegram account for multi-device access.`,
+                },
+                429
+              );
             }
-          }
-
-          // Total active device limit check
-          const activeDevices = devices.filter(d => d.is_revoked === 0);
-          if (activeDevices.length >= license.max_devices) {
-            return jsonResponse(
-              {
-                error: `Device limit reached (${activeDevices.length}/${license.max_devices} devices active). Please deactivate your other device first to transfer.`,
-              },
-              429
-            );
           }
         }
 
@@ -1676,7 +1703,7 @@ export default {
         });
 
         // Permanently bind Telegram Account to this license if provided
-        if (body.telegram_user_id || body.phone_number) {
+        if (incomingTgId || incomingPhone) {
           try {
             await env.DB.prepare(`
               UPDATE licenses 
@@ -1684,8 +1711,8 @@ export default {
                   phone_number = COALESCE(?, phone_number)
               WHERE license_key = ?
             `).bind(
-              body.telegram_user_id ? String(body.telegram_user_id).trim() : null,
-              body.phone_number ? String(body.phone_number).trim() : null,
+              incomingTgId,
+              incomingPhone,
               cleanKey
             ).run();
           } catch {
