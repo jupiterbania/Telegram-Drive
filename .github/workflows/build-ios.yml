@@ -51,98 +51,130 @@ jobs:
         run: |
           npx tauri ios init
 
-      - name: Build iOS Application
+      - name: Build iOS Application with Xcode (Device & Simulator)
         working-directory: app
         run: |
-          npx tauri ios build --ci --target aarch64 --export-method development || true
+          cd src-tauri/gen/apple
+          
+          # Find project or workspace
+          if [ -d "app_iOS.xcworkspace" ]; then
+            PROJECT_ARG="-workspace app_iOS.xcworkspace"
+          elif [ -d "app.xcodeproj" ]; then
+            PROJECT_ARG="-project app.xcodeproj"
+          else
+            XCODEPROJ=$(find . -maxdepth 1 -name "*.xcodeproj" | head -n 1)
+            PROJECT_ARG="-project $XCODEPROJ"
+          fi
+          
+          echo "Using Xcode target: $PROJECT_ARG"
+          
+          # List schemes to be certain
+          xcodebuild $PROJECT_ARG -list || true
+          
+          SCHEME="app_iOS"
+          
+          # 1. Build for Physical iOS Device (aarch64 / iphoneos)
+          echo "=== Building for Physical iOS Devices (arm64 iphoneos) ==="
+          xcodebuild $PROJECT_ARG \
+            -scheme "$SCHEME" \
+            -configuration Release \
+            -sdk iphoneos \
+            -destination "generic/platform=iOS" \
+            -derivedDataPath derivedData-device \
+            CODE_SIGNING_ALLOWED=NO \
+            CODE_SIGNING_REQUIRED=NO \
+            CODE_SIGN_IDENTITY="" \
+            PROVISIONING_PROFILE_SPECIFIER="" \
+            build || true
 
-      - name: Package iOS IPA & Simulator Artifacts (Node packager)
+          # 2. Build for iOS Simulator (aarch64 / iphonesimulator)
+          echo "=== Building for iOS Simulator (iphonesimulator) ==="
+          xcodebuild $PROJECT_ARG \
+            -scheme "$SCHEME" \
+            -configuration Release \
+            -sdk iphonesimulator \
+            -destination "generic/platform=iOS Simulator" \
+            -derivedDataPath derivedData-sim \
+            CODE_SIGNING_ALLOWED=NO \
+            CODE_SIGNING_REQUIRED=NO \
+            CODE_SIGN_IDENTITY="" \
+            PROVISIONING_PROFILE_SPECIFIER="" \
+            build || true
+
+      - name: Package iOS IPA & Simulator Artifacts
         working-directory: app
         env:
           TAG_NAME: ${{ github.event.inputs.release_tag || 'v1.2.0' }}
         run: |
-          node -e '
-          const fs = require("fs");
-          const path = require("path");
-          const { execSync } = require("child_process");
+          mkdir -p ios-artifacts
+          
+          echo "=== Locating built .app bundles ==="
+          find src-tauri -name "*.app" -type d
+          
+          # 1. Device App (.app for physical iPhone)
+          DEVICE_APP=$(find src-tauri/gen/apple/derivedData-device -name "*.app" -type d | head -n 1)
+          if [ -z "$DEVICE_APP" ]; then
+            DEVICE_APP=$(find src-tauri -path "*Release-iphoneos*" -name "*.app" -type d | head -n 1)
+          fi
+          if [ -z "$DEVICE_APP" ]; then
+            DEVICE_APP=$(find src-tauri -name "*.app" -type d | head -n 1)
+          fi
+          
+          # 2. Simulator App (.app for iOS Simulator)
+          SIM_APP=$(find src-tauri/gen/apple/derivedData-sim -name "*.app" -type d | head -n 1)
+          if [ -z "$SIM_APP" ]; then
+            SIM_APP=$(find src-tauri -path "*Release-iphonesimulator*" -name "*.app" -type d | head -n 1)
+          fi
+          
+          TAG="${TAG_NAME}"
+          
+          if [ -n "$DEVICE_APP" ] && [ -d "$DEVICE_APP" ]; then
+            echo "Packaging Physical Device IPA from: $DEVICE_APP"
+            
+            # Ad-hoc sign the bundle for sideloading support (AltStore, TrollStore, SideStore, Sideloadly, Scarlet, Feather)
+            codesign --force --deep -s - "$DEVICE_APP" || true
+            
+            rm -rf Payload
+            mkdir -p Payload
+            cp -R "$DEVICE_APP" Payload/
+            
+            # Package IPA
+            zip -r "ios-artifacts/TG-Drive-${TAG}-iOS-Direct-Install.ipa" Payload
+            cp "ios-artifacts/TG-Drive-${TAG}-iOS-Direct-Install.ipa" "ios-artifacts/TG-Drive-${TAG}-iOS.ipa"
+            echo "Created IPA: TG-Drive-${TAG}-iOS-Direct-Install.ipa"
+          else
+            echo "Warning: Device .app not found!"
+          fi
+          
+          if [ -n "$SIM_APP" ] && [ -d "$SIM_APP" ]; then
+            echo "Packaging Simulator bundle from: $SIM_APP"
+            zip -r "ios-artifacts/TG-Drive-${TAG}-iOS-Simulator-App.zip" "$SIM_APP"
+            echo "Created Simulator zip: TG-Drive-${TAG}-iOS-Simulator-App.zip"
+          elif [ -n "$DEVICE_APP" ] && [ -d "$DEVICE_APP" ]; then
+            zip -r "ios-artifacts/TG-Drive-${TAG}-iOS-Simulator-App.zip" "$DEVICE_APP"
+          fi
+          
+          echo "=== Summary of iOS Artifacts ==="
+          ls -lh ios-artifacts/
 
-          function findApp(dir) {
-            let matches = [];
-            try {
-              const entries = fs.readdirSync(dir, { withFileTypes: true });
-              for (const entry of entries) {
-                const full = path.join(dir, entry.name);
-                if (entry.isDirectory()) {
-                  if (entry.name.endsWith(".app")) {
-                    matches.push(full);
-                  } else {
-                    matches = matches.concat(findApp(full));
-                  }
-                }
-              }
-            } catch (e) {}
-            return matches;
-          }
-
-          const apps = findApp("src-tauri");
-          console.log("Found .app bundles:", apps);
-
-          let bestApp = null;
-          let bestSize = 0;
-
-          for (const app of apps) {
-            try {
-              // Calculate size by walking
-              let total = 0;
-              function calc(p) {
-                const stat = fs.statSync(p);
-                if (stat.isDirectory()) {
-                  for (const c of fs.readdirSync(p)) calc(path.join(p, c));
-                } else {
-                  total += stat.size;
-                }
-              }
-              calc(app);
-              console.log(`App: ${app} -> ${(total / (1024*1024)).toFixed(2)} MB`);
-              if (total > bestSize) {
-                bestSize = total;
-                bestApp = app;
-              }
-            } catch (e) {
-              console.error("Error inspecting:", app, e.message);
-            }
-          }
-
-          if (!bestApp) {
-            console.error("No iOS .app bundle found in src-tauri!");
-            process.exit(1);
-          }
-
-          console.log(`Selecting best app bundle: ${bestApp} (${(bestSize / (1024*1024)).toFixed(2)} MB)`);
-          fs.mkdirSync("ios-artifacts", { recursive: true });
-          fs.rmSync("Payload", { recursive: true, force: true });
-          fs.mkdirSync("Payload", { recursive: true });
-
-          const targetApp = path.join("Payload", path.basename(bestApp));
-          execSync(`cp -R "${bestApp}" "${targetApp}"`);
-
-          const tag = process.env.TAG_NAME || "v1.2.0";
-          execSync(`zip -r "ios-artifacts/TG-Drive-${tag}-iOS-Direct-Install.ipa" Payload`);
-          execSync(`zip -r "ios-artifacts/TG-Drive-${tag}-iOS-Simulator-App.zip" "${bestApp}"`);
-
-          console.log("Successfully created iOS packages:");
-          for (const f of fs.readdirSync("ios-artifacts")) {
-            const stat = fs.statSync(path.join("ios-artifacts", f));
-            console.log(` - ${f}: ${(stat.size / (1024*1024)).toFixed(2)} MB`);
-          }
-          '
-
-      - name: Upload iOS Artifacts to Release
+      - name: Clean Old iOS Release Assets & Upload New iOS Package
         working-directory: app
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           TAG_NAME: ${{ github.event.inputs.release_tag || 'v1.2.0' }}
         run: |
+          echo "Deleting any older iOS assets from release ${TAG_NAME}..."
+          gh release delete-asset "${TAG_NAME}" "TG-Drive-${TAG_NAME}-iOS-Direct-Install.ipa" --yes 2>/dev/null || true
+          gh release delete-asset "${TAG_NAME}" "TG-Drive-${TAG_NAME}-iOS.ipa" --yes 2>/dev/null || true
+          gh release delete-asset "${TAG_NAME}" "TG-Drive-${TAG_NAME}-iOS-Simulator-App.zip" --yes 2>/dev/null || true
+          gh release delete-asset "${TAG_NAME}" "Telegram-Drive-${TAG_NAME}-ios.ipa" --yes 2>/dev/null || true
+          gh release delete-asset "${TAG_NAME}" "Telegram-Drive-${TAG_NAME}-ios-app.zip" --yes 2>/dev/null || true
+          
           if [ -d ios-artifacts ] && [ "$(ls -A ios-artifacts)" ]; then
+            echo "Uploading new iOS assets to release ${TAG_NAME}..."
             gh release upload "${TAG_NAME}" ios-artifacts/* --clobber
+            echo "iOS release assets uploaded successfully!"
+          else
+            echo "Error: No iOS artifacts found to upload."
+            exit 1
           fi
